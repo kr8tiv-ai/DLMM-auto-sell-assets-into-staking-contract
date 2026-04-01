@@ -62,6 +62,17 @@ These instructions track the lifecycle of Meteora DLMM position exits on-chain:
 | `complete_exit` | Mark an exit as completed once all liquidity is removed |
 | `terminate_exit` | Owner cancels an active exit |
 
+### Governance
+
+Stake-weighted on-chain voting for community decisions:
+
+| Instruction | Description |
+|------------|-------------|
+| `initialize_governance` | Set up governance config (tied to the staking pool) |
+| `create_proposal` | Create a proposal with title, description URI, options, and voting window |
+| `cast_vote` | Vote on an active proposal (weight = your staked $BRAIN amount) |
+| `close_proposal` | Close a proposal after the voting period ends |
+
 ### Admin
 
 | Instruction | Description |
@@ -78,6 +89,7 @@ These instructions track the lifecycle of Meteora DLMM position exits on-chain:
 - **Crank authority** — a separate wallet with limited permissions (deposit rewards, record claims, complete exits) enabling automated off-chain operations without exposing owner keys
 - **Protocol fee** — configurable up to 5% (500 bps), split to treasury on each reward deposit
 - **Emergency halt** — single transaction pauses the pool and terminates all active DLMM exits via `remaining_accounts` pattern
+- **On-chain governance** — stake-weighted voting with configurable proposal options, time-bounded voting periods, and automatic close
 
 ## Key Design Decisions
 
@@ -86,6 +98,8 @@ These instructions track the lifecycle of Meteora DLMM position exits on-chain:
 - **Unstake always works**: Even when the pool is paused, users can always withdraw their $BRAIN (safety guarantee)
 - **Checked math everywhere**: All arithmetic uses `checked_*` operations to prevent overflow/underflow exploits
 - **1e12 precision**: Reward calculations use 10^12 scaling to minimize rounding dust across small and large stakes
+- **Rent-exempt safety**: Vault withdrawals check that remaining lamports stay above rent-exempt minimum
+- **Compile-time layout assertions**: Emergency halt byte offsets verified at compile time via `const` assertions
 
 ## Development
 
