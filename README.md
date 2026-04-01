@@ -4,16 +4,18 @@ A Solana program built with [Anchor](https://www.anchor-lang.com/) that lets [$B
 
 ## How It Works
 
-The Pinky and the Brain ecosystem generates revenue through DLMM (Dynamic Liquidity Market Maker) positions on Meteora. When those positions are unwound, the SOL proceeds flow into this staking contract as rewards for $BRAIN holders — **without ever selling $BRAIN on the open market**. This protects the chart while still distributing real yield to the community.
+Pinky and the Brain operates a fund that holds positions in tokens we support. These assets are managed as DLMM (Dynamic Liquidity Market Maker) positions on Meteora. When it's time to take profits, dumping on the open market would hurt the charts of projects we believe in. Instead, this contract sells those assets directly into existing DLMM liquidity — no market orders, no chart impact — and routes the SOL proceeds into the staking contract as rewards for $BRAIN holders.
+
+**The result**: Treasury assets are sold directly into existing DLMM liquidity — no market sells, no chart damage. The SOL proceeds flow straight to $BRAIN stakers as real yield.
 
 ### The Flow
 
 ```
-Meteora DLMM Position
+Treasury DLMM Position (supported tokens)
         │
         ▼
   Crank initiates exit
-  (bins fill over time)
+  (assets sell directly into DLMM liquidity — no market impact)
         │
         ▼
   SOL claimed from filled bins
@@ -22,7 +24,7 @@ Meteora DLMM Position
   deposit_rewards() ──► Protocol fee to treasury
         │
         ▼
-  SOL distributed to stakers
+  SOL distributed to $BRAIN stakers
   (weighted by tier multiplier)
 ```
 
@@ -93,7 +95,7 @@ Stake-weighted on-chain voting for community decisions:
 
 ## Key Design Decisions
 
-- **No chart damage**: Revenue from DLMM exits is converted to SOL rewards, never sold as $BRAIN on the market
+- **No chart damage**: Treasury assets from our fund are sold directly into DLMM liquidity — never dumped on the open market — protecting the charts of every token we support
 - **Pre-cliff forfeiture**: Stakers who bail before 7 days earn nothing — forfeited rewards go back to loyal stakers
 - **Unstake always works**: Even when the pool is paused, users can always withdraw their $BRAIN (safety guarantee)
 - **Checked math everywhere**: All arithmetic uses `checked_*` operations to prevent overflow/underflow exploits
