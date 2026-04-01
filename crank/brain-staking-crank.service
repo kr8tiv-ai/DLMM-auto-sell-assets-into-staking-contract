@@ -1,0 +1,37 @@
+[Unit]
+Description=Brain Staking DLMM Exit Crank
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=crank
+Group=crank
+WorkingDirectory=/opt/brain-staking-crank
+
+# Use compiled JS for production
+ExecStart=/usr/bin/node dist/index.js
+
+# Restart policy
+Restart=on-failure
+RestartSec=5s
+StartLimitIntervalSec=300
+StartLimitBurst=20
+
+# Environment file
+EnvironmentFile=/opt/brain-staking-crank/.env
+
+# Security hardening
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/opt/brain-staking-crank/heartbeat.txt /opt/brain-staking-crank/logs
+PrivateTmp=true
+
+# Logging (stdout/stderr → journald)
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=brain-staking-crank
+
+[Install]
+WantedBy=multi-user.target

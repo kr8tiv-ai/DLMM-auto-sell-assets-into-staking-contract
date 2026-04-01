@@ -38,4 +38,37 @@ pub mod brain_staking {
     pub fn unstake(ctx: Context<Unstake>) -> Result<()> {
         instructions::unstake::handle_unstake(ctx)
     }
+
+    pub fn initiate_exit(
+        ctx: Context<InitiateExit>,
+        asset_mint: Pubkey,
+        dlmm_pool: Pubkey,
+        position: Pubkey,
+    ) -> Result<()> {
+        instructions::initiate_exit::handle_initiate_exit(ctx, asset_mint, dlmm_pool, position)
+    }
+
+    pub fn record_claim(ctx: Context<RecordClaim>, amount: u64) -> Result<()> {
+        instructions::record_claim::handle_record_claim(ctx, amount)
+    }
+
+    pub fn complete_exit(ctx: Context<CompleteExit>) -> Result<()> {
+        instructions::complete_exit::handle_complete_exit(ctx)
+    }
+
+    pub fn terminate_exit(ctx: Context<TerminateExit>) -> Result<()> {
+        instructions::terminate_exit::handle_terminate_exit(ctx)
+    }
+
+    pub fn emergency_halt(ctx: Context<EmergencyHalt>) -> Result<()> {
+        instructions::emergency_halt::handle_emergency_halt(ctx)
+    }
+
+    pub fn resume(ctx: Context<Resume>) -> Result<()> {
+        instructions::resume::handle_resume(ctx)
+    }
+
+    pub fn update_crank(ctx: Context<UpdateCrank>, new_crank: Pubkey) -> Result<()> {
+        instructions::update_crank::handle_update_crank(ctx, new_crank)
+    }
 }

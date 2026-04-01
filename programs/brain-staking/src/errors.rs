@@ -34,4 +34,13 @@ pub enum StakingError {
 
     #[msg("Minimum stake amount must be greater than zero")]
     InvalidMinStake,
+
+    #[msg("An exit is already active for this asset/pool pair")]
+    ExitAlreadyActive,
+
+    #[msg("Exit is not in Active status")]
+    ExitNotActive,
+
+    #[msg("Exit has already been completed or terminated")]
+    ExitAlreadyCompleted,
 }

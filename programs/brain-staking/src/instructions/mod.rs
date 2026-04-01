@@ -1,11 +1,25 @@
 pub mod claim;
+pub mod complete_exit;
 pub mod deposit_rewards;
+pub mod emergency_halt;
+pub mod initiate_exit;
 pub mod initialize;
+pub mod record_claim;
+pub mod resume;
 pub mod stake;
+pub mod terminate_exit;
 pub mod unstake;
+pub mod update_crank;
 
 pub use claim::*;
+pub use complete_exit::*;
 pub use deposit_rewards::*;
+pub use emergency_halt::*;
+pub use initiate_exit::*;
 pub use initialize::*;
+pub use record_claim::*;
+pub use resume::*;
 pub use stake::*;
+pub use terminate_exit::*;
 pub use unstake::*;
+pub use update_crank::*;

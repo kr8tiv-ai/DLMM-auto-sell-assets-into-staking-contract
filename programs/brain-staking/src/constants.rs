@@ -27,3 +27,6 @@ pub const DEFAULT_MIN_STAKE: u64 = 100_000_000_000;
 
 /// Maximum protocol fee in basis points (5% = 500 bps)
 pub const MAX_PROTOCOL_FEE_BPS: u16 = 500;
+
+/// PDA seed for DLMM exit tracker accounts
+pub const DLMM_EXIT_SEED: &[u8] = b"dlmm_exit";

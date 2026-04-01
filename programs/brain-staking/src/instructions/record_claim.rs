@@ -1,0 +1,49 @@
+use anchor_lang::prelude::*;
+
+use crate::constants::*;
+use crate::errors::StakingError;
+use crate::state::{DlmmExit, StakingPool};
+
+#[derive(Accounts)]
+pub struct RecordClaim<'info> {
+    /// Authority: must be pool owner OR crank
+    #[account(mut)]
+    pub authority: Signer<'info>,
+
+    #[account(
+        seeds = [STAKING_POOL_SEED],
+        bump = staking_pool.bump,
+        constraint = authority.key() == staking_pool.owner
+            || authority.key() == staking_pool.crank
+            @ StakingError::Unauthorized,
+    )]
+    pub staking_pool: Account<'info, StakingPool>,
+
+    #[account(
+        mut,
+        seeds = [DLMM_EXIT_SEED, dlmm_exit.asset_mint.as_ref(), dlmm_exit.dlmm_pool.as_ref()],
+        bump = dlmm_exit.bump,
+    )]
+    pub dlmm_exit: Account<'info, DlmmExit>,
+}
+
+pub fn handle_record_claim(ctx: Context<RecordClaim>, amount: u64) -> Result<()> {
+    require!(amount > 0, StakingError::ZeroAmount);
+
+    let exit = &mut ctx.accounts.dlmm_exit;
+    require!(exit.status == 0, StakingError::ExitNotActive);
+
+    exit.total_sol_claimed = exit
+        .total_sol_claimed
+        .checked_add(amount)
+        .ok_or(StakingError::MathOverflow)?;
+
+    msg!(
+        "DLMM exit claim recorded: exit={}, claimed={}, total={}",
+        exit.key(),
+        amount,
+        exit.total_sol_claimed
+    );
+
+    Ok(())
+}
