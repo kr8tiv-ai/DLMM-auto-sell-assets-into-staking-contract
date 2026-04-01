@@ -66,9 +66,11 @@ pub fn handle_claim(ctx: Context<Claim>) -> Result<()> {
                 .checked_sub(staker.reward_debt)
                 .ok_or(StakingError::MathOverflow)?;
 
+            let pending_u64 =
+                u64::try_from(pending).map_err(|_| StakingError::MathOverflow)?;
             staker.pending_rewards = staker
                 .pending_rewards
-                .checked_add(pending as u64)
+                .checked_add(pending_u64)
                 .ok_or(StakingError::MathOverflow)?;
         }
 
@@ -115,9 +117,10 @@ pub fn handle_claim(ctx: Context<Claim>) -> Result<()> {
         .checked_div(PRECISION)
         .ok_or(StakingError::MathOverflow)?;
 
-    let owed = accumulated
+    let owed_u128 = accumulated
         .checked_sub(staker.reward_debt)
-        .ok_or(StakingError::MathOverflow)? as u64;
+        .ok_or(StakingError::MathOverflow)?;
+    let owed = u64::try_from(owed_u128).map_err(|_| StakingError::MathOverflow)?;
 
     let total = staker
         .pending_rewards
@@ -136,6 +139,14 @@ pub fn handle_claim(ctx: Context<Claim>) -> Result<()> {
 
     let vault_lamports = reward_vault_info.lamports();
     require!(vault_lamports >= total, StakingError::InsufficientRewards);
+
+    // Ensure vault stays above rent-exempt minimum after deduction
+    let rent = Rent::get()?;
+    let min_balance = rent.minimum_balance(0);
+    require!(
+        vault_lamports.checked_sub(total).unwrap_or(0) >= min_balance,
+        StakingError::RentExemptViolation
+    );
 
     **reward_vault_info.try_borrow_mut_lamports()? -= total;
     **user_info.try_borrow_mut_lamports()? += total;

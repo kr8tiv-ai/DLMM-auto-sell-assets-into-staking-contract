@@ -30,3 +30,29 @@ pub const MAX_PROTOCOL_FEE_BPS: u16 = 500;
 
 /// PDA seed for DLMM exit tracker accounts
 pub const DLMM_EXIT_SEED: &[u8] = b"dlmm_exit";
+
+// ── Governance ──────────────────────────────────────────
+
+/// PDA seed for the governance config account
+pub const GOVERNANCE_CONFIG_SEED: &[u8] = b"governance_config";
+
+/// PDA seed prefix for proposal accounts (+ proposal id)
+pub const PROPOSAL_SEED: &[u8] = b"proposal";
+
+/// PDA seed prefix for vote record accounts (+ proposal id + voter)
+pub const VOTE_RECORD_SEED: &[u8] = b"vote";
+
+/// Maximum number of voting options per proposal
+pub const MAX_PROPOSAL_OPTIONS: usize = 5;
+
+/// Minimum number of voting options per proposal
+pub const MIN_PROPOSAL_OPTIONS: usize = 2;
+
+/// Maximum length of a proposal title (bytes)
+pub const MAX_TITLE_LEN: usize = 64;
+
+/// Maximum length of a proposal description URI (bytes)
+pub const MAX_DESCRIPTION_URI_LEN: usize = 200;
+
+/// Maximum length of a single voting option label (bytes)
+pub const MAX_OPTION_LEN: usize = 32;

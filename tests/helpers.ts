@@ -388,6 +388,196 @@ export function sleep(ms: number): Promise<void> {
 }
 
 // ──────────────────────────────────────────────────────────────────
+// Governance helpers
+// ──────────────────────────────────────────────────────────────────
+
+export const GOVERNANCE_CONFIG_SEED = Buffer.from("governance_config");
+export const PROPOSAL_SEED = Buffer.from("proposal");
+export const VOTE_RECORD_SEED = Buffer.from("vote");
+
+/**
+ * Derive the GovernanceConfig PDA.
+ */
+export function findGovernanceConfig(programId: PublicKey): [PublicKey, number] {
+  return PublicKey.findProgramAddressSync([GOVERNANCE_CONFIG_SEED], programId);
+}
+
+/**
+ * Derive a Proposal PDA from its id.
+ */
+export function findProposal(
+  proposalId: number,
+  programId: PublicKey
+): [PublicKey, number] {
+  const buf = Buffer.alloc(8);
+  buf.writeBigUInt64LE(BigInt(proposalId));
+  return PublicKey.findProgramAddressSync([PROPOSAL_SEED, buf], programId);
+}
+
+/**
+ * Derive a VoteRecord PDA from proposal id + voter.
+ */
+export function findVoteRecord(
+  proposalId: number,
+  voter: PublicKey,
+  programId: PublicKey
+): [PublicKey, number] {
+  const buf = Buffer.alloc(8);
+  buf.writeBigUInt64LE(BigInt(proposalId));
+  return PublicKey.findProgramAddressSync(
+    [VOTE_RECORD_SEED, buf, voter.toBuffer()],
+    programId
+  );
+}
+
+/**
+ * Initialize governance config. Only pool owner can call.
+ */
+export async function initializeGovernance(
+  ctx: TestContext,
+  authority: Keypair
+): Promise<string> {
+  const [governanceConfig] = findGovernanceConfig(ctx.program.programId);
+
+  return ctx.program.methods
+    .initializeGovernance()
+    .accountsStrict({
+      owner: authority.publicKey,
+      stakingPool: ctx.stakingPool,
+      governanceConfig,
+      systemProgram: SystemProgram.programId,
+    })
+    .signers([authority])
+    .rpc();
+}
+
+/**
+ * Create a governance proposal. Derives the proposal PDA from next_proposal_id.
+ */
+export async function createProposal(
+  ctx: TestContext,
+  authority: Keypair,
+  title: string,
+  descriptionUri: string,
+  proposalType: number,
+  options: string[],
+  votingStarts: anchor.BN,
+  votingEnds: anchor.BN
+): Promise<{ txSig: string; proposalId: number }> {
+  const [governanceConfig] = findGovernanceConfig(ctx.program.programId);
+
+  // Read current next_proposal_id to derive the correct PDA
+  const config = await ctx.program.account.governanceConfig.fetch(governanceConfig);
+  const proposalId = (config.nextProposalId as anchor.BN).toNumber();
+  const [proposal] = findProposal(proposalId, ctx.program.programId);
+
+  const txSig = await ctx.program.methods
+    .createProposal(title, descriptionUri, proposalType, options, votingStarts, votingEnds)
+    .accountsStrict({
+      owner: authority.publicKey,
+      stakingPool: ctx.stakingPool,
+      governanceConfig,
+      proposal,
+      systemProgram: SystemProgram.programId,
+    })
+    .signers([authority])
+    .rpc();
+
+  return { txSig, proposalId };
+}
+
+/**
+ * Cast a vote on a proposal.
+ */
+export async function castVote(
+  ctx: TestContext,
+  voter: Keypair,
+  voterBrainAta: PublicKey,
+  proposalId: number,
+  optionIndex: number,
+  stakerAccount?: PublicKey
+): Promise<string> {
+  const [governanceConfig] = findGovernanceConfig(ctx.program.programId);
+  const [proposal] = findProposal(proposalId, ctx.program.programId);
+  const [voteRecord] = findVoteRecord(proposalId, voter.publicKey, ctx.program.programId);
+
+  // Build remaining accounts for optional staker_account
+  const remainingAccounts: anchor.web3.AccountMeta[] = [];
+
+  // Use accountsStrict — staker_account is an Option<> field in the instruction
+  const accounts: any = {
+    voter: voter.publicKey,
+    stakingPool: ctx.stakingPool,
+    governanceConfig,
+    proposal,
+    voteRecord,
+    voterBrainAta,
+    systemProgram: SystemProgram.programId,
+    tokenProgram: TOKEN_PROGRAM_ID,
+  };
+
+  if (stakerAccount) {
+    accounts.stakerAccount = stakerAccount;
+  } else {
+    accounts.stakerAccount = null;
+  }
+
+  return ctx.program.methods
+    .castVote(optionIndex)
+    .accountsStrict(accounts)
+    .signers([voter])
+    .rpc();
+}
+
+/**
+ * Close a proposal (permissionless — anyone can call after voting_ends).
+ */
+export async function closeProposal(
+  ctx: TestContext,
+  signer: Keypair,
+  proposalId: number
+): Promise<string> {
+  const [proposal] = findProposal(proposalId, ctx.program.programId);
+
+  return ctx.program.methods
+    .closeProposal()
+    .accountsStrict({
+      anyone: signer.publicKey,
+      proposal,
+    })
+    .signers([signer])
+    .rpc();
+}
+
+/**
+ * Fetch the GovernanceConfig account.
+ */
+export async function fetchGovernanceConfig(ctx: TestContext) {
+  const [governanceConfig] = findGovernanceConfig(ctx.program.programId);
+  return ctx.program.account.governanceConfig.fetch(governanceConfig);
+}
+
+/**
+ * Fetch a Proposal account by id.
+ */
+export async function fetchProposal(ctx: TestContext, proposalId: number) {
+  const [proposal] = findProposal(proposalId, ctx.program.programId);
+  return ctx.program.account.proposal.fetch(proposal);
+}
+
+/**
+ * Fetch a VoteRecord by proposal id and voter.
+ */
+export async function fetchVoteRecord(
+  ctx: TestContext,
+  proposalId: number,
+  voter: PublicKey
+) {
+  const [voteRecord] = findVoteRecord(proposalId, voter, ctx.program.programId);
+  return ctx.program.account.voteRecord.fetch(voteRecord);
+}
+
+// ──────────────────────────────────────────────────────────────────
 // DlmmExit helpers
 // ──────────────────────────────────────────────────────────────────
 

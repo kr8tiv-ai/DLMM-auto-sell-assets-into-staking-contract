@@ -30,6 +30,7 @@ pub struct Stake<'info> {
     #[account(
         mut,
         constraint = user_brain_ata.mint == staking_pool.brain_mint @ StakingError::InvalidMint,
+        constraint = user_brain_ata.owner == user.key() @ StakingError::Unauthorized,
     )]
     pub user_brain_ata: Account<'info, TokenAccount>,
 

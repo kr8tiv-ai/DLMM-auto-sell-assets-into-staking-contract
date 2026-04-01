@@ -23,6 +23,7 @@ pub struct CompleteExit<'info> {
         mut,
         seeds = [DLMM_EXIT_SEED, dlmm_exit.asset_mint.as_ref(), dlmm_exit.dlmm_pool.as_ref()],
         bump = dlmm_exit.bump,
+        constraint = dlmm_exit.pool == staking_pool.key() @ StakingError::Unauthorized,
     )]
     pub dlmm_exit: Account<'info, DlmmExit>,
 }

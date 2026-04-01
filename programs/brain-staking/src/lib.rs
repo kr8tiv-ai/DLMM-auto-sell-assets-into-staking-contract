@@ -6,6 +6,9 @@ pub mod helpers;
 pub mod instructions;
 pub mod state;
 
+#[cfg(test)]
+mod fuzz_tests;
+
 use instructions::*;
 
 declare_id!("5o2uBwvKUy4oF78ziR4tEiqz59k7XBXuZBwiZFqCfca2");
@@ -70,5 +73,39 @@ pub mod brain_staking {
 
     pub fn update_crank(ctx: Context<UpdateCrank>, new_crank: Pubkey) -> Result<()> {
         instructions::update_crank::handle_update_crank(ctx, new_crank)
+    }
+
+    // ── Governance ──────────────────────────────────────
+
+    pub fn initialize_governance(ctx: Context<InitializeGovernance>) -> Result<()> {
+        instructions::initialize_governance::handle_initialize_governance(ctx)
+    }
+
+    pub fn create_proposal(
+        ctx: Context<CreateProposal>,
+        title: String,
+        description_uri: String,
+        proposal_type: u8,
+        options: Vec<String>,
+        voting_starts: i64,
+        voting_ends: i64,
+    ) -> Result<()> {
+        instructions::create_proposal::handle_create_proposal(
+            ctx,
+            title,
+            description_uri,
+            proposal_type,
+            options,
+            voting_starts,
+            voting_ends,
+        )
+    }
+
+    pub fn cast_vote(ctx: Context<CastVote>, option_index: u8) -> Result<()> {
+        instructions::cast_vote::handle_cast_vote(ctx, option_index)
+    }
+
+    pub fn close_proposal(ctx: Context<CloseProposal>) -> Result<()> {
+        instructions::close_proposal::handle_close_proposal(ctx)
     }
 }

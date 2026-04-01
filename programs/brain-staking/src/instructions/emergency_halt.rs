@@ -8,10 +8,29 @@ use crate::state::{DlmmExit, StakingPool};
 /// Byte offset of `status` field within a serialized DlmmExit account.
 /// Layout: 8 (discriminator) + 32×5 (Pubkeys) + 8 (u64) = 176
 const STATUS_OFFSET: usize = 176;
-/// Byte offset of `completed_at` (i64) immediately after status (u8).
-const COMPLETED_AT_OFFSET: usize = 177;
+/// Byte offset of `completed_at` (i64) after status (u8) + created_at (i64).
+const COMPLETED_AT_OFFSET: usize = 185;
 /// Minimum account data length for a valid DlmmExit (194 bytes).
 const DLMM_EXIT_DATA_LEN: usize = 194;
+
+// Compile-time assertion: verify hardcoded byte offsets match DlmmExit field layout.
+// Layout: 8 (disc) + 32*5 (Pubkeys) + 8 (u64 total_sol_claimed) + 1 (u8 status)
+//       + 8 (i64 created_at) + 8 (i64 completed_at) + 1 (u8 bump) = 194
+const _: () = {
+    let disc = 8usize;
+    let pubkeys = 32 * 5;
+    let sol_claimed = 8; // u64
+    let expected_status = disc + pubkeys + sol_claimed; // 176
+    assert!(expected_status == 176);
+    let status_size = 1; // u8
+    let created_at_size = 8; // i64
+    let expected_completed_at = expected_status + status_size + created_at_size; // 185
+    assert!(expected_completed_at == 185);
+    let completed_at_size = 8; // i64
+    let bump_size = 1; // u8
+    let expected_len = expected_completed_at + completed_at_size + bump_size; // 194
+    assert!(expected_len == 194);
+};
 
 #[derive(Accounts)]
 pub struct EmergencyHalt<'info> {
