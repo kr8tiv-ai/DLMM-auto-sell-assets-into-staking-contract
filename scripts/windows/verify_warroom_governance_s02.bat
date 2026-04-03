@@ -34,7 +34,7 @@ if errorlevel 1 (
 )
 
 echo [verify] 3/4 Governance integration regressions
-call npx --no-install ts-mocha -p "%ROOT_DIR%\tsconfig.json" -t 1000000 "%ROOT_DIR%\tests\governance.ts" --grep "governance_initiate_exit|close_proposal"
+call npx --no-install --prefix "%ROOT_DIR%" ts-mocha -p "%ROOT_DIR%\tsconfig.json" -t 1000000 "%ROOT_DIR%\tests\governance.ts" --grep "governance_initiate_exit|close_proposal"
 if errorlevel 1 (
   echo [verify] Governance integration regression failed
   popd
