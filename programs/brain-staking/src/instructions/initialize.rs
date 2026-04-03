@@ -42,9 +42,8 @@ pub struct Initialize<'info> {
     )]
     pub reward_vault: SystemAccount<'info>,
 
-    /// Treasury wallet that receives protocol fees
-    /// CHECK: Stored in pool config, validated on use
-    pub treasury: UncheckedAccount<'info>,
+    /// Treasury wallet that receives protocol fees (validated as non-PDA)
+    pub treasury: SystemAccount<'info>,
 
     pub system_program: Program<'info, System>,
     pub token_program: Program<'info, Token>,
