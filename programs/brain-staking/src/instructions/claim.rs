@@ -151,6 +151,13 @@ pub fn handle_claim(ctx: Context<Claim>) -> Result<()> {
     **reward_vault_info.try_borrow_mut_lamports()? -= total;
     **user_info.try_borrow_mut_lamports()? += total;
 
+    // Emergency check - if vault drops below threshold, pause pool
+    let vault_lamports_after = reward_vault_info.lamports();
+    if vault_lamports_after < EMERGENCY_VAULT_THRESHOLD {
+        pool.is_paused = true;
+        msg!("WARNING: Reward vault below emergency threshold. Pool paused.");
+    }
+
     // Update staker state
     staker.reward_debt = accumulated;
     staker.pending_rewards = 0;

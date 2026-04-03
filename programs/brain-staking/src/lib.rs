@@ -171,4 +171,16 @@ pub mod brain_staking {
     ) -> Result<()> {
         instructions::update_pool_config::handle_update_pool_config(ctx, new_min_stake, new_protocol_fee_bps)
     }
+
+    pub fn update_pool_config_by_governance(
+        ctx: Context<UpdatePoolConfigByGovernance>,
+        new_min_stake: Option<u64>,
+        new_protocol_fee_bps: Option<u16>,
+    ) -> Result<()> {
+        instructions::update_pool_config_by_governance::handle_update_pool_config_by_governance(ctx, new_min_stake, new_protocol_fee_bps)
+    }
+
+    pub fn close_vote_record(ctx: Context<CloseVoteRecord>, proposal_id: u64) -> Result<()> {
+        instructions::close_vote_record::handle_close_vote_record(ctx)
+    }
 }

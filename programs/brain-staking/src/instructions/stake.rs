@@ -54,6 +54,8 @@ pub fn handle_stake(ctx: Context<Stake>, amount: u64) -> Result<()> {
         amount >= pool.min_stake_amount,
         StakingError::BelowMinStake
     );
+    // Max stake cap to prevent whale concentration
+    require!(amount <= MAX_STAKE_AMOUNT, StakingError::AboveMaxStake);
 
     // Transfer BRAIN from user to vault
     let cpi_accounts = Transfer {

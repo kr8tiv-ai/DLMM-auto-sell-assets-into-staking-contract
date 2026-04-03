@@ -18,6 +18,9 @@ pub struct UpdateTreasury<'info> {
 }
 
 pub fn handle_update_treasury(ctx: Context<UpdateTreasury>, new_treasury: Pubkey) -> Result<()> {
+    // Prevent treasury from being set to zero address
+    require!(new_treasury != Pubkey::default(), StakingError::InvalidPendingOwner);
+    
     let pool = &mut ctx.accounts.staking_pool;
     let old_treasury = pool.treasury;
     pool.treasury = new_treasury;

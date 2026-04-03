@@ -177,6 +177,13 @@ pub fn handle_unstake(ctx: Context<Unstake>) -> Result<()> {
             **reward_vault_info.try_borrow_mut_lamports()? -= total_claim;
             **user_info.try_borrow_mut_lamports()? += total_claim;
 
+            // Emergency check - if vault drops below threshold, pause pool
+            let vault_lamports_after = reward_vault_info.lamports();
+            if vault_lamports_after < EMERGENCY_VAULT_THRESHOLD {
+                pool.is_paused = true;
+                msg!("WARNING: Reward vault below emergency threshold. Pool paused.");
+            }
+
             msg!("Auto-claimed {} lamports on unstake", total_claim);
         }
     } else {

@@ -45,6 +45,8 @@ pub fn handle_deposit_rewards(ctx: Context<DepositRewards>, amount: u64) -> Resu
 
     require!(!pool.is_paused, StakingError::PoolPaused);
     require!(amount > 0, StakingError::ZeroAmount);
+    // Minimum deposit to prevent dust attacks
+    require!(amount >= MIN_REWARD_DEPOSIT, StakingError::BelowMinRewardDeposit);
     // C-05: Require total_weighted_stake > 0 to prevent trapped SOL
     // If all stakers are pre-cliff (multiplier=0), rewards cannot be distributed
     require!(pool.total_weighted_stake > 0, StakingError::NoActiveStakers);

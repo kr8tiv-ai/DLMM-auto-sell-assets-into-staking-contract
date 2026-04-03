@@ -6,7 +6,7 @@ use crate::state::StakingPool;
 
 #[derive(Accounts)]
 pub struct UpdateCrank<'info> {
-    /// Authority: must be pool owner only
+    /// Authority: must be pool owner only (not crank!)
     #[account(mut)]
     pub authority: Signer<'info>,
 
@@ -21,6 +21,9 @@ pub struct UpdateCrank<'info> {
 }
 
 pub fn handle_update_crank(ctx: Context<UpdateCrank>, new_crank: Pubkey) -> Result<()> {
+    // Prevent crank from being set to zero address
+    require!(new_crank != Pubkey::default(), StakingError::InvalidPendingOwner);
+    
     let pool = &mut ctx.accounts.staking_pool;
     let old_crank = pool.crank;
     pool.crank = new_crank;

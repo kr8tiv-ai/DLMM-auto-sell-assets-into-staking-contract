@@ -28,6 +28,15 @@ pub const DEFAULT_MIN_STAKE: u64 = 100_000_000_000;
 /// Maximum protocol fee in basis points (5% = 500 bps)
 pub const MAX_PROTOCOL_FEE_BPS: u16 = 500;
 
+/// Minimum reward deposit to prevent dust attacks (1 SOL)
+pub const MIN_REWARD_DEPOSIT: u64 = 1_000_000_000;
+
+/// Maximum single stake amount to prevent whale concentration (10M BRAIN)
+pub const MAX_STAKE_AMOUNT: u64 = 10_000_000_000_000;
+
+/// Emergency threshold - auto-pause if reward vault drops below this (5 SOL)
+pub const EMERGENCY_VAULT_THRESHOLD: u64 = 5_000_000_000
+
 /// PDA seed for DLMM exit tracker accounts
 pub const DLMM_EXIT_SEED: &[u8] = b"dlmm_exit";
 
@@ -62,6 +71,9 @@ pub const PROPOSAL_TYPE_SELL: u8 = 1;
 
 /// Proposal type identifier for treasury update proposals
 pub const PROPOSAL_TYPE_TREASURY_UPDATE: u8 = 2;
+
+/// Proposal type identifier for pool config update proposals
+pub const PROPOSAL_TYPE_CONFIG_UPDATE: u8 = 3;
 
 /// Minimum voting period in seconds (24 hours)
 pub const MIN_VOTING_PERIOD_SECONDS: i64 = 24 * 60 * 60;

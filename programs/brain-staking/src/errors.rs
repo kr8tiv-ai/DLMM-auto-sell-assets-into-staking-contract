@@ -114,4 +114,10 @@ pub enum StakingError {
 
     #[msg("Treasury update requires governance approval")]
     TreasuryRequiresGovernance,
+
+    #[msg("Reward deposit below minimum threshold")]
+    BelowMinRewardDeposit,
+
+    #[msg("Stake amount exceeds maximum allowed")]
+    AboveMaxStake,
 }
