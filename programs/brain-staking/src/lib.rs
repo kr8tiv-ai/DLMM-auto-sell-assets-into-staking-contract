@@ -63,6 +63,10 @@ pub mod brain_staking {
         instructions::terminate_exit::handle_terminate_exit(ctx)
     }
 
+    pub fn close_dlmm_exit(ctx: Context<CloseDlmmExit>) -> Result<()> {
+        instructions::close_dlmm_exit::handle_close_dlmm_exit(ctx)
+    }
+
     pub fn emergency_halt(ctx: Context<EmergencyHalt>) -> Result<()> {
         instructions::emergency_halt::handle_emergency_halt(ctx)
     }

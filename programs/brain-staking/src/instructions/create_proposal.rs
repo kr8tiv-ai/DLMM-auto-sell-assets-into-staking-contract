@@ -63,6 +63,13 @@ pub fn handle_create_proposal(
         StakingError::InvalidVotingPeriod
     );
 
+    // C-04: Enforce minimum voting period
+    let voting_duration = voting_ends.saturating_sub(voting_starts);
+    require!(
+        voting_duration >= MIN_VOTING_PERIOD_SECONDS,
+        StakingError::InvalidVotingPeriod
+    );
+
     let clock = Clock::get()?;
     require!(
         voting_starts >= clock.unix_timestamp,
@@ -86,6 +93,7 @@ pub fn handle_create_proposal(
     proposal.total_vote_weight = 0;
     proposal.winning_option_index = 255; // Unresolved
     proposal.executed = false;
+    proposal.passed_at = 0;
     proposal.bump = ctx.bumps.proposal;
 
     config.next_proposal_id = config

@@ -59,3 +59,9 @@ pub const MAX_OPTION_LEN: usize = 32;
 
 /// Proposal type identifier for sell/DLMM-exit proposals
 pub const PROPOSAL_TYPE_SELL: u8 = 1;
+
+/// Minimum voting period in seconds (24 hours)
+pub const MIN_VOTING_PERIOD_SECONDS: i64 = 24 * 60 * 60;
+
+/// Minimum execution delay after proposal passes (48 hours)
+pub const MIN_EXECUTION_DELAY_SECONDS: i64 = 48 * 60 * 60;

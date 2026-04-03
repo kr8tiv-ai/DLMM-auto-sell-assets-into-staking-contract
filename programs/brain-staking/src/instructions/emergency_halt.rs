@@ -5,6 +5,9 @@ use crate::constants::*;
 use crate::errors::StakingError;
 use crate::state::{DlmmExit, StakingPool};
 
+/// Byte offset of `pool` field within a serialized DlmmExit account.
+/// Layout: 8 (discriminator) + 32 (pool pubkey) = 40
+const POOL_OFFSET: usize = 8;
 /// Byte offset of `status` field within a serialized DlmmExit account.
 /// Layout: 8 (discriminator) + 32×5 (Pubkeys) + 8 (u64) = 176
 const STATUS_OFFSET: usize = 176;
@@ -63,6 +66,7 @@ pub fn handle_emergency_halt(ctx: Context<EmergencyHalt>) -> Result<()> {
     let now = clock.unix_timestamp;
     let program_id = crate::ID;
     let discriminator = DlmmExit::DISCRIMINATOR;
+    let pool_key = pool.key();
 
     let mut terminated_count: u64 = 0;
 
@@ -90,6 +94,13 @@ pub fn handle_emergency_halt(ctx: Context<EmergencyHalt>) -> Result<()> {
         // Discriminator must match DlmmExit
         if &data[..8] != discriminator {
             msg!("emergency_halt: skipping {} (wrong discriminator)", account_info.key());
+            continue;
+        }
+
+        // C-02: Validate the DlmmExit's pool field matches our staking pool
+        let exit_pool_key = Pubkey::new(&data[POOL_OFFSET..POOL_OFFSET + 32]);
+        if exit_pool_key != pool_key {
+            msg!("emergency_halt: skipping {} (wrong pool)", account_info.key());
             continue;
         }
 

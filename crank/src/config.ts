@@ -19,6 +19,8 @@ export interface CrankConfig {
   stakingPool: string;
   /** Path to heartbeat file written each cycle */
   heartbeatPath: string;
+  /** Treasury address for emergency asset transfers */
+  treasuryAddress: string;
 }
 
 function requireEnv(key: string): string {
@@ -59,6 +61,7 @@ export function loadConfig(): CrankConfig {
     idlPath: optionalEnv("IDL_PATH", "../target/idl/brain_staking.json"),
     stakingPool: requireEnv("STAKING_POOL"),
     heartbeatPath: optionalEnv("HEARTBEAT_PATH", "./heartbeat.txt"),
+    treasuryAddress: requireEnv("TREASURY_ADDRESS"),
   };
 }
 

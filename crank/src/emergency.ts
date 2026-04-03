@@ -51,7 +51,8 @@ export interface EmergencyDeps {
   transferAssetToTreasury: (
     connection: Connection,
     wallet: Keypair,
-    assetMint: PublicKey
+    assetMint: PublicKey,
+    treasuryAddress: string
   ) => Promise<string | null>;
 }
 
@@ -164,7 +165,7 @@ export async function terminateSingleExit(
 
   // 5. Transfer unsold asset tokens to treasury
   try {
-    await deps.transferAssetToTreasury(connection, wallet, exit.assetMint);
+    await deps.transferAssetToTreasury(connection, wallet, exit.assetMint, config.treasuryAddress);
     log.info("Asset transferred to treasury", { exitPda: exitKey });
     steps.push({ step: "transferAssetToTreasury", success: true });
   } catch (err: any) {

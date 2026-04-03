@@ -67,6 +67,16 @@ pub fn handle_governance_initiate_exit(
     // Proposal must have passed (status == 1)
     require!(proposal.status == 1, StakingError::ProposalNotPassed);
 
+    // C-07: Enforce execution timelock — proposal must have passed at least MIN_EXECUTION_DELAY_SECONDS ago
+    if proposal.passed_at > 0 {
+        let clock = Clock::get()?;
+        let time_since_passed = clock.unix_timestamp.saturating_sub(proposal.passed_at);
+        require!(
+            time_since_passed >= MIN_EXECUTION_DELAY_SECONDS,
+            StakingError::ProposalNotPassed
+        );
+    }
+
     // Defensive check: passed proposals must preserve "option 0 is pass" invariant.
     require!(
         proposal.winning_option_index == 0,

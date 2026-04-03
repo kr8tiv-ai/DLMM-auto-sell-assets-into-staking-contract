@@ -35,6 +35,8 @@ pub struct Proposal {
     pub winning_option_index: u8,
     /// Whether this proposal has been executed (governance_initiate_exit called)
     pub executed: bool,
+    /// Unix timestamp when proposal passed (0 = not passed yet)
+    pub passed_at: i64,
     /// PDA bump
     pub bump: u8,
 }

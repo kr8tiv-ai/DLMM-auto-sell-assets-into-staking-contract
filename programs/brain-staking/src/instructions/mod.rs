@@ -1,6 +1,7 @@
 pub mod accept_ownership;
 pub mod cast_vote;
 pub mod claim;
+pub mod close_dlmm_exit;
 pub mod close_proposal;
 pub mod complete_exit;
 pub mod create_proposal;
@@ -29,6 +30,7 @@ pub mod update_treasury;
 pub use accept_ownership::*;
 pub use cast_vote::*;
 pub use claim::*;
+pub use close_dlmm_exit::*;
 pub use close_proposal::*;
 pub use complete_exit::*;
 pub use create_proposal::*;

@@ -101,6 +101,7 @@ pub fn handle_close_proposal(ctx: Context<CloseProposal>) -> Result<()> {
         // Ties are rejected (conservative)
         proposal.status = 2; // Rejected
         proposal.winning_option_index = 255;
+        proposal.passed_at = 0;
         msg!("Proposal {} closed — tie, rejected.", proposal.id);
     } else {
         // Option 0 is the "Yes"/"Sell"/"Pass" option by convention.
@@ -110,8 +111,10 @@ pub fn handle_close_proposal(ctx: Context<CloseProposal>) -> Result<()> {
         proposal.winning_option_index = max_index as u8;
         if max_index == 0 {
             proposal.status = 1; // Passed
+            proposal.passed_at = clock.unix_timestamp;
         } else {
             proposal.status = 2; // Rejected
+            proposal.passed_at = 0;
         }
         msg!(
             "Proposal {} closed. Winner: option {} with weight {}. Status: {}",
