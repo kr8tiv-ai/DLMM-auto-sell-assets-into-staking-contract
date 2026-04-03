@@ -183,4 +183,12 @@ pub mod brain_staking {
     pub fn close_vote_record(ctx: Context<CloseVoteRecord>, proposal_id: u64) -> Result<()> {
         instructions::close_vote_record::handle_close_vote_record(ctx)
     }
+
+    pub fn emergency_rescue(ctx: Context<EmergencyRescue>) -> Result<()> {
+        instructions::emergency_rescue::handle_emergency_rescue(ctx)
+    }
+
+    pub fn renounce_ownership(ctx: Context<RenounceOwnership>) -> Result<()> {
+        instructions::renounce_ownership::handle_renounce_ownership(ctx)
+    }
 }
