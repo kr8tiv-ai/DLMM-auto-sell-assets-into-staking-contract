@@ -27,6 +27,8 @@ export interface DlmmExitAccount {
   createdAt: number;
   /** Unix timestamp when exit was completed or terminated (0 while active) */
   completedAt: number;
+  /** Governance proposal that triggered this exit (0 = manual owner-initiated) */
+  proposalId: bigint;
   /** PDA bump */
   bump: number;
 }

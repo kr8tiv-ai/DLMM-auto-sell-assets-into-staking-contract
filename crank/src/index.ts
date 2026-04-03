@@ -22,6 +22,11 @@ const STAKING_POOL_SEED = Buffer.from("staking_pool");
 const REWARD_VAULT_SEED = Buffer.from("reward_vault");
 const DLMM_EXIT_SEED = Buffer.from("dlmm_exit");
 
+export const DLMM_EXIT_DISCRIMINATOR_SIZE = 8;
+export const DLMM_EXIT_ACCOUNT_DATA_SIZE = 194;
+export const DLMM_EXIT_TOTAL_ACCOUNT_SIZE =
+  DLMM_EXIT_DISCRIMINATOR_SIZE + DLMM_EXIT_ACCOUNT_DATA_SIZE;
+
 /**
  * Derive the staking pool PDA.
  */
@@ -113,14 +118,27 @@ async function main(): Promise<void> {
           log.info("Fetching active DlmmExit accounts");
           const accounts = await connection.getProgramAccounts(programId, {
             filters: [
-              { dataSize: 185 }, // DlmmExit account size (8 discriminator + fields)
+              { dataSize: DLMM_EXIT_TOTAL_ACCOUNT_SIZE },
             ],
           });
 
-          return accounts.map(({ pubkey, account }) => ({
-            publicKey: pubkey,
-            account: deserializeDlmmExit(account.data),
-          }));
+          const decoded: Array<{ publicKey: PublicKey; account: DlmmExitAccount }> = [];
+          for (const { pubkey, account } of accounts) {
+            try {
+              decoded.push({
+                publicKey: pubkey,
+                account: deserializeDlmmExit(account.data),
+              });
+            } catch (err: any) {
+              log.error("Skipping malformed DlmmExit account", {
+                exitPda: pubkey.toBase58(),
+                dataLength: account.data.length,
+                error: err?.message,
+              });
+            }
+          }
+
+          return decoded;
         },
         { maxRetries: 3, baseDelayMs: 1000, maxDelayMs: 10000 }
       ),
@@ -194,8 +212,14 @@ async function main(): Promise<void> {
  * Deserialize a DlmmExit account from raw buffer.
  * Layout: 8 byte discriminator, then fields.
  */
-function deserializeDlmmExit(data: Buffer): DlmmExitAccount {
-  let offset = 8; // skip Anchor discriminator
+export function deserializeDlmmExit(data: Buffer): DlmmExitAccount {
+  if (data.length < DLMM_EXIT_TOTAL_ACCOUNT_SIZE) {
+    throw new Error(
+      `Invalid DlmmExit account length ${data.length}; expected at least ${DLMM_EXIT_TOTAL_ACCOUNT_SIZE}`
+    );
+  }
+
+  let offset = DLMM_EXIT_DISCRIMINATOR_SIZE; // skip Anchor discriminator
 
   const pool = new PublicKey(data.subarray(offset, offset + 32));
   offset += 32;
@@ -215,13 +239,24 @@ function deserializeDlmmExit(data: Buffer): DlmmExitAccount {
   const totalSolClaimed = data.readBigUInt64LE(offset);
   offset += 8;
 
-  const status = data.readUInt8(offset) as 0 | 1 | 2;
+  const statusValue = data.readUInt8(offset);
+  if (
+    statusValue !== ExitStatus.Active &&
+    statusValue !== ExitStatus.Completed &&
+    statusValue !== ExitStatus.Terminated
+  ) {
+    throw new Error(`Invalid DlmmExit status byte: ${statusValue}`);
+  }
+  const status = statusValue as ExitStatus;
   offset += 1;
 
   const createdAt = Number(data.readBigInt64LE(offset));
   offset += 8;
 
   const completedAt = Number(data.readBigInt64LE(offset));
+  offset += 8;
+
+  const proposalId = data.readBigUInt64LE(offset);
   offset += 8;
 
   const bump = data.readUInt8(offset);
@@ -233,14 +268,17 @@ function deserializeDlmmExit(data: Buffer): DlmmExitAccount {
     dlmmPool,
     position,
     totalSolClaimed,
-    status: status as ExitStatus,
+    status,
     createdAt,
     completedAt,
+    proposalId,
     bump,
   };
 }
 
-main().catch((err) => {
-  log.error("Fatal error", { error: err?.message, stack: err?.stack });
-  process.exit(1);
-});
+if (require.main === module) {
+  main().catch((err) => {
+    log.error("Fatal error", { error: err?.message, stack: err?.stack });
+    process.exit(1);
+  });
+}
