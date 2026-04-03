@@ -5,8 +5,7 @@ use crate::errors::StakingError;
 use crate::state::{GovernanceConfig, StakingPool};
 
 #[derive(Accounts)]
-pub struct InitializeGovernance<'info> {
-    #[account(mut)]
+pub struct SetAutoExecute<'info> {
     pub owner: Signer<'info>,
 
     #[account(
@@ -17,25 +16,25 @@ pub struct InitializeGovernance<'info> {
     pub staking_pool: Account<'info, StakingPool>,
 
     #[account(
-        init,
-        payer = owner,
-        space = 8 + GovernanceConfig::INIT_SPACE,
+        mut,
         seeds = [GOVERNANCE_CONFIG_SEED],
-        bump,
+        bump = governance_config.bump,
     )]
     pub governance_config: Account<'info, GovernanceConfig>,
-
-    pub system_program: Program<'info, System>,
 }
 
-pub fn handle_initialize_governance(ctx: Context<InitializeGovernance>) -> Result<()> {
+pub fn handle_set_auto_execute(
+    ctx: Context<SetAutoExecute>,
+    enabled: bool,
+) -> Result<()> {
     let config = &mut ctx.accounts.governance_config;
-    config.pool = ctx.accounts.staking_pool.key();
-    config.next_proposal_id = 0;
-    config.auto_execute = false;
-    config.min_quorum_bps = 0;
-    config.bump = ctx.bumps.governance_config;
+    config.auto_execute = enabled;
 
-    msg!("Governance initialized for pool: {}", config.pool);
+    msg!(
+        "Governance auto_execute set to {} by {}",
+        enabled,
+        ctx.accounts.owner.key()
+    );
+
     Ok(())
 }

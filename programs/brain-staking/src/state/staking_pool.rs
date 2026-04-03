@@ -27,6 +27,8 @@ pub struct StakingPool {
     pub protocol_fee_bps: u16,
     /// Minimum BRAIN tokens required to stake
     pub min_stake_amount: u64,
+    /// Pending new owner for two-step ownership transfer (Pubkey::default = no pending)
+    pub pending_owner: Pubkey,
     /// Emergency pause flag
     pub is_paused: bool,
     /// PDA bump for the staking pool

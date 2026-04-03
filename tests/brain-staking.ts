@@ -919,28 +919,20 @@ describe("brain-staking", () => {
   // Edge Cases
   // ================================================================
   describe("Edge Cases", () => {
-    it("26. deposit rewards with zero total_weighted_stake → reward_per_share unchanged", async () => {
-      // Ensure no stakers with weighted stake
+    it("26. deposit rewards with zero total_staked → rejected with NoActiveStakers", async () => {
+      // H1: deposit_rewards is rejected when no stakers exist (total_staked == 0)
       const poolBefore = await getPool();
-      const rpsBefore = poolBefore.rewardPerShare;
-
-      // Deposit when no weighted stakers exist
-      // Need to ensure pool exists but no stakers. The pool is already init'd.
-      // If there are leftover stakers from prior tests they've been cleaned up.
-      // This deposit should NOT change reward_per_share.
-      await doDeposit(owner, new anchor.BN(LAMPORTS_PER_SOL));
-
-      const poolAfter = await getPool();
-      // If total_weighted_stake == 0, reward_per_share stays the same
-      // But SOL still goes to vault
-      if (poolBefore.totalWeightedStake.toNumber() === 0) {
-        expect(poolAfter.rewardPerShare.toString()).to.equal(
-          rpsBefore.toString()
-        );
+      if (poolBefore.totalStaked.toNumber() === 0) {
+        try {
+          await doDeposit(owner, new anchor.BN(LAMPORTS_PER_SOL));
+          expect.fail("Should have thrown NoActiveStakers");
+        } catch (e: any) {
+          expect(e.toString()).to.include("NoActiveStakers");
+        }
+      } else {
+        // If stakers exist from prior tests, deposit should succeed
+        await doDeposit(owner, new anchor.BN(LAMPORTS_PER_SOL));
       }
-      // Verify vault balance increased
-      const vaultBal = await connection.getBalance(rewardVault);
-      expect(vaultBal).to.be.greaterThan(0);
     });
 
     it("27. claim with zero pending → succeeds with 0 transfer", async () => {

@@ -56,3 +56,6 @@ pub const MAX_DESCRIPTION_URI_LEN: usize = 200;
 
 /// Maximum length of a single voting option label (bytes)
 pub const MAX_OPTION_LEN: usize = 32;
+
+/// Proposal type identifier for sell/DLMM-exit proposals
+pub const PROPOSAL_TYPE_SELL: u8 = 1;

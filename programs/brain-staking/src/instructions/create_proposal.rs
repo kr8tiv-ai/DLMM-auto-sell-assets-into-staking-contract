@@ -27,7 +27,7 @@ pub struct CreateProposal<'info> {
         init,
         payer = owner,
         space = 8 + Proposal::INIT_SPACE,
-        seeds = [PROPOSAL_SEED, governance_config.next_proposal_id.to_le_bytes().as_ref()],
+        seeds = [PROPOSAL_SEED, staking_pool.key().as_ref(), governance_config.next_proposal_id.to_le_bytes().as_ref()],
         bump,
     )]
     pub proposal: Account<'info, Proposal>,
@@ -44,6 +44,9 @@ pub fn handle_create_proposal(
     voting_starts: i64,
     voting_ends: i64,
 ) -> Result<()> {
+    // H3: Check pause
+    require!(!ctx.accounts.staking_pool.is_paused, StakingError::PoolPaused);
+
     // Validate inputs
     require!(!title.is_empty(), StakingError::TitleTooLong);
     require!(title.len() <= MAX_TITLE_LEN, StakingError::TitleTooLong);
@@ -81,6 +84,8 @@ pub fn handle_create_proposal(
     proposal.voting_ends = voting_ends;
     proposal.status = 0; // Active
     proposal.total_vote_weight = 0;
+    proposal.winning_option_index = 255; // Unresolved
+    proposal.executed = false;
     proposal.bump = ctx.bumps.proposal;
 
     config.next_proposal_id = config

@@ -76,6 +76,7 @@ pub fn handle_initialize(
     pool.total_rewards_distributed = 0;
     pool.protocol_fee_bps = protocol_fee_bps;
     pool.min_stake_amount = min_stake_amount;
+    pool.pending_owner = Pubkey::default();
     pool.is_paused = false;
     pool.bump = ctx.bumps.staking_pool;
     pool.brain_vault_bump = ctx.bumps.brain_vault;

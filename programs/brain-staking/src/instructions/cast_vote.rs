@@ -24,7 +24,7 @@ pub struct CastVote<'info> {
 
     #[account(
         mut,
-        seeds = [PROPOSAL_SEED, proposal.id.to_le_bytes().as_ref()],
+        seeds = [PROPOSAL_SEED, proposal.pool.as_ref(), proposal.id.to_le_bytes().as_ref()],
         bump = proposal.bump,
     )]
     pub proposal: Account<'info, Proposal>,
@@ -61,6 +61,9 @@ pub struct CastVote<'info> {
 pub fn handle_cast_vote(ctx: Context<CastVote>, option_index: u8) -> Result<()> {
     let proposal = &ctx.accounts.proposal;
 
+    // H3: Check pause
+    require!(!ctx.accounts.staking_pool.is_paused, StakingError::PoolPaused);
+
     // Validate proposal is active
     require!(proposal.status == 0, StakingError::ProposalNotActive);
 
@@ -81,14 +84,17 @@ pub fn handle_cast_vote(ctx: Context<CastVote>, option_index: u8) -> Result<()> 
         StakingError::InvalidOptionIndex
     );
 
-    // Calculate voting weight: wallet balance + staked amount (if staking)
+    // C6: Hybrid voting weight: staked BRAIN gets 2x, wallet ATA gets 1x
     let wallet_balance = ctx.accounts.voter_brain_ata.amount;
     let staked_amount = match &ctx.accounts.staker_account {
         Some(staker) => staker.staked_amount,
         None => 0,
     };
+    let staked_weight = staked_amount
+        .checked_mul(2)
+        .ok_or(StakingError::MathOverflow)?;
     let weight = wallet_balance
-        .checked_add(staked_amount)
+        .checked_add(staked_weight)
         .ok_or(StakingError::MathOverflow)?;
 
     require!(weight > 0, StakingError::NoVotingPower);

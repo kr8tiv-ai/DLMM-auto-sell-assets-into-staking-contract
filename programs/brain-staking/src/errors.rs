@@ -81,4 +81,31 @@ pub enum StakingError {
 
     #[msg("Governance has already been initialized for this pool")]
     GovernanceAlreadyInitialized,
+
+    #[msg("Proposal has not passed")]
+    ProposalNotPassed,
+
+    #[msg("Proposal type is not a sell/exit proposal")]
+    InvalidProposalType,
+
+    #[msg("Proposal account state is inconsistent")]
+    InvalidProposalState,
+
+    #[msg("No votes were cast on this proposal")]
+    NoVotesCast,
+
+    #[msg("No active stakers with weighted stake")]
+    NoActiveStakers,
+
+    #[msg("Proposal has already been executed")]
+    ProposalAlreadyExecuted,
+
+    #[msg("Quorum not met: insufficient vote participation")]
+    QuorumNotMet,
+
+    #[msg("No pending ownership transfer")]
+    NoPendingOwner,
+
+    #[msg("Signer is not the pending owner")]
+    InvalidPendingOwner,
 }

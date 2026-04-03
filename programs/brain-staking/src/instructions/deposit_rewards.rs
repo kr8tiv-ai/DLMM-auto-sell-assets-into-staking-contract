@@ -45,6 +45,7 @@ pub fn handle_deposit_rewards(ctx: Context<DepositRewards>, amount: u64) -> Resu
 
     require!(!pool.is_paused, StakingError::PoolPaused);
     require!(amount > 0, StakingError::ZeroAmount);
+    require!(pool.total_staked > 0, StakingError::NoActiveStakers);
 
     // Calculate protocol fee
     let fee = amount

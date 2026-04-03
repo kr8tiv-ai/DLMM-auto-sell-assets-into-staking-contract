@@ -1,0 +1,22 @@
+version: "3.8"
+
+services:
+  crank:
+    build: .
+    container_name: brain-staking-crank
+    restart: unless-stopped
+    env_file: .env
+    volumes:
+      - ./heartbeat.txt:/app/heartbeat.txt
+      - ./logs:/app/logs
+      - ${CRANK_KEYPAIR_PATH:?Set CRANK_KEYPAIR_PATH in .env}:/app/keypair.json:ro
+      - ${IDL_PATH:-../target/idl/brain_staking.json}:/app/idl/brain_staking.json:ro
+    environment:
+      - CRANK_KEYPAIR_PATH=/app/keypair.json
+      - IDL_PATH=/app/idl/brain_staking.json
+    mem_limit: 512m
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"

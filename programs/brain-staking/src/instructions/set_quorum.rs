@@ -5,8 +5,7 @@ use crate::errors::StakingError;
 use crate::state::{GovernanceConfig, StakingPool};
 
 #[derive(Accounts)]
-pub struct InitializeGovernance<'info> {
-    #[account(mut)]
+pub struct SetQuorum<'info> {
     pub owner: Signer<'info>,
 
     #[account(
@@ -17,25 +16,23 @@ pub struct InitializeGovernance<'info> {
     pub staking_pool: Account<'info, StakingPool>,
 
     #[account(
-        init,
-        payer = owner,
-        space = 8 + GovernanceConfig::INIT_SPACE,
+        mut,
         seeds = [GOVERNANCE_CONFIG_SEED],
-        bump,
+        bump = governance_config.bump,
     )]
     pub governance_config: Account<'info, GovernanceConfig>,
-
-    pub system_program: Program<'info, System>,
 }
 
-pub fn handle_initialize_governance(ctx: Context<InitializeGovernance>) -> Result<()> {
+pub fn handle_set_quorum(ctx: Context<SetQuorum>, min_quorum_bps: u16) -> Result<()> {
     let config = &mut ctx.accounts.governance_config;
-    config.pool = ctx.accounts.staking_pool.key();
-    config.next_proposal_id = 0;
-    config.auto_execute = false;
-    config.min_quorum_bps = 0;
-    config.bump = ctx.bumps.governance_config;
+    let old_quorum = config.min_quorum_bps;
+    config.min_quorum_bps = min_quorum_bps;
 
-    msg!("Governance initialized for pool: {}", config.pool);
+    msg!(
+        "Quorum updated: {} bps → {} bps",
+        old_quorum,
+        min_quorum_bps
+    );
+
     Ok(())
 }

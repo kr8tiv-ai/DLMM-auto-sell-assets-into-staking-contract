@@ -25,6 +25,7 @@ import {
   findProposal,
   findVoteRecord,
   findStakerAccount,
+  findDlmmExit,
   DEFAULT_MIN_STAKE,
   initializeGovernance,
   createProposal,
@@ -33,6 +34,19 @@ import {
   fetchGovernanceConfig,
   fetchProposal,
   fetchVoteRecord,
+  fetchDlmmExit,
+  fetchPool,
+  governanceInitiateExit,
+  setAutoExecute,
+  setQuorum,
+  reallocGovernanceConfig,
+  reallocProposal,
+  reallocDlmmExit,
+  reallocStakingPool,
+  snapshotGovernanceConfig,
+  snapshotProposal,
+  snapshotDlmmExit,
+  snapshotStakingPool,
 } from "./helpers";
 
 // ──────────────────────────────────────────────────────────────────
@@ -151,8 +165,8 @@ describe("governance", () => {
     const program = anchor.workspace.BrainStaking as Program<BrainStaking>;
 
     const owner = (provider.wallet as anchor.Wallet).payer;
-    const crank = Keypair.generate();
-    const treasury = Keypair.generate();
+    let crank = Keypair.generate();
+    let treasury = Keypair.generate();
 
     // Airdrop to crank
     const sig = await provider.connection.requestAirdrop(
@@ -196,9 +210,11 @@ describe("governance", () => {
         })
         .rpc();
     } catch (_err) {
-      // Pool already initialized — fetch existing state
+      // Pool already initialized — fetch existing state and align ctx keys
       const poolState = await program.account.stakingPool.fetch(stakingPool);
       brainMint = poolState.brainMint;
+      crank = { publicKey: poolState.crank } as Keypair;
+      treasury = { publicKey: poolState.treasury } as Keypair;
     }
 
     ctx = {
@@ -215,6 +231,18 @@ describe("governance", () => {
       minStake: new anchor.BN(DEFAULT_MIN_STAKE.toString()),
       protocolFeeBps: 200,
     };
+
+    // Resume pool if a prior test suite (emergency-controls) left it paused
+    const poolState = await program.account.stakingPool.fetch(stakingPool);
+    if (poolState.isPaused) {
+      await (program.methods as any)
+        .resume()
+        .accountsStrict({
+          authority: owner.publicKey,
+          stakingPool,
+        })
+        .rpc();
+    }
   });
 
   // ────────────────────────────────────────────────────────────────
@@ -449,8 +477,10 @@ describe("governance", () => {
       await castVote(ctx, voter, brainAta, voteProposalId, 1, stakerPda); // vote "No"
 
       const record = await fetchVoteRecord(ctx, voteProposalId, voter.publicKey);
-      // Weight = remaining ATA (300k) + staked (200k) = 500k
-      expect(record.weight.toNumber()).to.equal(Number(totalBrain));
+      // C6 hybrid weight: ATA (300k) + staked*2 (200k*2=400k) = 700k
+      const ataRemaining = Number(totalBrain) - stakeAmount.toNumber(); // 300k
+      const expectedWeight = ataRemaining + stakeAmount.toNumber() * 2; // 300k + 400k = 700k
+      expect(record.weight.toNumber()).to.equal(expectedWeight);
       expect(record.optionIndex).to.equal(1);
     });
 
@@ -649,7 +679,8 @@ describe("governance", () => {
       await closeProposal(ctx, rando, result.proposalId);
 
       const proposal = await fetchProposal(ctx, result.proposalId);
-      expect(proposal.status).to.equal(1); // Closed
+      // No votes were cast, so tally rejects the proposal
+      expect(proposal.status).to.equal(2); // Rejected (no votes)
     });
 
     it("premature close rejected (before voting_ends)", async () => {
@@ -688,6 +719,753 @@ describe("governance", () => {
       } catch (err: any) {
         expect(err.toString()).to.include("ProposalNotActive");
       }
+    });
+  });
+
+  // ────────────────────────────────────────────────────────────────
+  // close_proposal — vote tally (M003/S01)
+  // ────────────────────────────────────────────────────────────────
+  describe("close_proposal — vote tally", () => {
+    it("proposal with 'Yes' majority → status = Passed (1), winning_option_index = 0", async () => {
+      const now = await readClockTimestamp(connection());
+      const result = await createProposal(
+        ctx, ctx.owner, "Tally Yes Wins", "ipfs://tally-yes", 0,
+        ["Yes", "No"],
+        new anchor.BN(now + 1),
+        new anchor.BN(now + 40)
+      );
+
+      // Warp into voting window
+      await warpTime(connection(), 5, ctx.owner);
+
+      // 3 voters: 2 vote Yes (1000 + 500), 1 votes No (200)
+      const { keypair: v1, brainAta: a1 } = await createStaker(ctx, BigInt(1_000_000_000));
+      const { keypair: v2, brainAta: a2 } = await createStaker(ctx, BigInt(500_000_000));
+      const { keypair: v3, brainAta: a3 } = await createStaker(ctx, BigInt(200_000_000));
+
+      await castVote(ctx, v1, a1, result.proposalId, 0); // Yes
+      await castVote(ctx, v2, a2, result.proposalId, 0); // Yes
+      await castVote(ctx, v3, a3, result.proposalId, 1); // No
+
+      // Warp past voting end
+      await warpTime(connection(), 50, ctx.owner);
+      await closeProposal(ctx, ctx.owner, result.proposalId);
+
+      const proposal = await fetchProposal(ctx, result.proposalId);
+      expect(proposal.status).to.equal(1); // Passed
+      expect(proposal.winningOptionIndex).to.equal(0);
+    });
+
+    it("proposal with 'No' majority → status = Rejected (2), winning_option_index = 1", async () => {
+      const now = await readClockTimestamp(connection());
+      const result = await createProposal(
+        ctx, ctx.owner, "Tally No Wins", "ipfs://tally-no", 0,
+        ["Yes", "No"],
+        new anchor.BN(now + 1),
+        new anchor.BN(now + 40)
+      );
+
+      await warpTime(connection(), 5, ctx.owner);
+
+      const { keypair: v1, brainAta: a1 } = await createStaker(ctx, BigInt(100_000_000));
+      const { keypair: v2, brainAta: a2 } = await createStaker(ctx, BigInt(900_000_000));
+
+      await castVote(ctx, v1, a1, result.proposalId, 0); // Yes
+      await castVote(ctx, v2, a2, result.proposalId, 1); // No
+
+      await warpTime(connection(), 50, ctx.owner);
+      await closeProposal(ctx, ctx.owner, result.proposalId);
+
+      const proposal = await fetchProposal(ctx, result.proposalId);
+      expect(proposal.status).to.equal(2); // Rejected
+      expect(proposal.winningOptionIndex).to.equal(1);
+    });
+
+    it("proposal with tie → status = Rejected (2), winning_option_index = 255", async () => {
+      const now = await readClockTimestamp(connection());
+      const result = await createProposal(
+        ctx, ctx.owner, "Tally Tie", "ipfs://tally-tie", 0,
+        ["Yes", "No"],
+        new anchor.BN(now + 1),
+        new anchor.BN(now + 40)
+      );
+
+      await warpTime(connection(), 5, ctx.owner);
+
+      const { keypair: v1, brainAta: a1 } = await createStaker(ctx, BigInt(500_000_000));
+      const { keypair: v2, brainAta: a2 } = await createStaker(ctx, BigInt(500_000_000));
+
+      await castVote(ctx, v1, a1, result.proposalId, 0); // Yes
+      await castVote(ctx, v2, a2, result.proposalId, 1); // No
+
+      await warpTime(connection(), 50, ctx.owner);
+      await closeProposal(ctx, ctx.owner, result.proposalId);
+
+      const proposal = await fetchProposal(ctx, result.proposalId);
+      expect(proposal.status).to.equal(2); // Rejected (tie = conservative reject)
+      expect(proposal.winningOptionIndex).to.equal(255);
+    });
+
+    it("proposal with no votes → status = Rejected (2), winning_option_index = 255", async () => {
+      const now = await readClockTimestamp(connection());
+      const result = await createProposal(
+        ctx, ctx.owner, "Tally No Votes", "ipfs://tally-none", 0,
+        ["Yes", "No"],
+        new anchor.BN(now + 1),
+        new anchor.BN(now + 30)
+      );
+
+      await warpTime(connection(), 40, ctx.owner);
+      await closeProposal(ctx, ctx.owner, result.proposalId);
+
+      const proposal = await fetchProposal(ctx, result.proposalId);
+      expect(proposal.status).to.equal(2); // Rejected
+      expect(proposal.winningOptionIndex).to.equal(255);
+    });
+
+    it("proposal with quorum not met → status = Rejected (2), winning_option_index = 255", async () => {
+      // Require 100% quorum against current total_staked for deterministic rejection.
+      await setQuorum(ctx, ctx.owner, 10_000);
+
+      const now = await readClockTimestamp(connection());
+      const result = await createProposal(
+        ctx, ctx.owner, "Tally Quorum Not Met", "ipfs://tally-quorum", 0,
+        ["Yes", "No"],
+        new anchor.BN(now + 1),
+        new anchor.BN(now + 40)
+      );
+
+      await warpTime(connection(), 5, ctx.owner);
+      // Cast a low-weight vote that should not meet 100% quorum of total_staked.
+      const { keypair: voter, brainAta } = await createStaker(ctx, BigInt(1_000_000_000));
+      await castVote(ctx, voter, brainAta, result.proposalId, 0);
+
+      await warpTime(connection(), 50, ctx.owner);
+      await closeProposal(ctx, ctx.owner, result.proposalId);
+
+      const proposal = await fetchProposal(ctx, result.proposalId);
+      expect(proposal.status).to.equal(2); // Rejected
+      expect(proposal.winningOptionIndex).to.equal(255);
+
+      // Reset quorum for subsequent tests.
+      await setQuorum(ctx, ctx.owner, 0);
+    });
+  });
+
+  // ────────────────────────────────────────────────────────────────
+  // governance_initiate_exit (R023, R024)
+  // ────────────────────────────────────────────────────────────────
+  describe("governance_initiate_exit (R023, R024)", () => {
+    const assetMint = Keypair.generate().publicKey;
+    const dlmmPool = Keypair.generate().publicKey;
+    const position = Keypair.generate().publicKey;
+    let passedSellProposalId: number;
+
+    before(async () => {
+      // Create a sell proposal (proposal_type = 1), vote Yes, close it
+      const now = await readClockTimestamp(connection());
+      const result = await createProposal(
+        ctx, ctx.owner, "Sell Asset X", "ipfs://sell-x", 1, // proposal_type = 1 (SELL)
+        ["Sell", "Keep"],
+        new anchor.BN(now + 1),
+        new anchor.BN(now + 40)
+      );
+      passedSellProposalId = result.proposalId;
+
+      await warpTime(connection(), 5, ctx.owner);
+
+      // Vote Yes (Sell) with heavy weight
+      const { keypair: voter, brainAta } = await createStaker(ctx, BigInt(10_000_000_000));
+      await castVote(ctx, voter, brainAta, passedSellProposalId, 0); // Sell
+
+      await warpTime(connection(), 50, ctx.owner);
+      await closeProposal(ctx, ctx.owner, passedSellProposalId);
+
+      // Verify it passed
+      const proposal = await fetchProposal(ctx, passedSellProposalId);
+      expect(proposal.status).to.equal(1); // Passed
+    });
+
+    it("owner creates DlmmExit from passed sell vote", async () => {
+      await governanceInitiateExit(
+        ctx, ctx.owner, passedSellProposalId,
+        assetMint, dlmmPool, position
+      );
+
+      const exit = await fetchDlmmExit(ctx, assetMint, dlmmPool);
+      expect(exit.pool.toBase58()).to.equal(ctx.stakingPool.toBase58());
+      expect(exit.owner.toBase58()).to.equal(ctx.owner.publicKey.toBase58());
+      expect(exit.assetMint.toBase58()).to.equal(assetMint.toBase58());
+      expect(exit.dlmmPool.toBase58()).to.equal(dlmmPool.toBase58());
+      expect(exit.position.toBase58()).to.equal(position.toBase58());
+      expect((exit.proposalId as anchor.BN).toNumber()).to.equal(passedSellProposalId);
+      expect(exit.status).to.equal(0); // Active
+
+      const proposal = await fetchProposal(ctx, passedSellProposalId);
+      expect(proposal.executed).to.equal(true);
+    });
+
+    it("duplicate governance execution rejected and existing DlmmExit stays unchanged", async () => {
+      const beforeExit = await fetchDlmmExit(ctx, assetMint, dlmmPool);
+
+      const replayMint = Keypair.generate().publicKey;
+      const replayPool = Keypair.generate().publicKey;
+      const replayPosition = Keypair.generate().publicKey;
+
+      try {
+        await governanceInitiateExit(
+          ctx,
+          ctx.owner,
+          passedSellProposalId,
+          replayMint,
+          replayPool,
+          replayPosition
+        );
+        expect.fail("Should have thrown");
+      } catch (err: any) {
+        expect(err.toString()).to.include("ProposalAlreadyExecuted");
+      }
+
+      const afterExit = await fetchDlmmExit(ctx, assetMint, dlmmPool);
+      expect(afterExit.pool.toBase58()).to.equal(beforeExit.pool.toBase58());
+      expect(afterExit.owner.toBase58()).to.equal(beforeExit.owner.toBase58());
+      expect(afterExit.assetMint.toBase58()).to.equal(beforeExit.assetMint.toBase58());
+      expect(afterExit.dlmmPool.toBase58()).to.equal(beforeExit.dlmmPool.toBase58());
+      expect(afterExit.position.toBase58()).to.equal(beforeExit.position.toBase58());
+      expect(afterExit.status).to.equal(beforeExit.status);
+      expect((afterExit.proposalId as anchor.BN).toNumber()).to.equal(
+        (beforeExit.proposalId as anchor.BN).toNumber()
+      );
+
+      const [replayExitPda] = findDlmmExit(replayMint, replayPool, ctx.program.programId);
+      const replayExitInfo = await connection().getAccountInfo(replayExitPda);
+      expect(replayExitInfo).to.equal(null);
+    });
+
+    it("rejects non-sell proposal_type", async () => {
+      // Create a non-sell proposal (type 0), vote Yes, close
+      const now = await readClockTimestamp(connection());
+      const result = await createProposal(
+        ctx, ctx.owner, "General Proposal", "ipfs://general", 0, // type 0 = general
+        ["Yes", "No"],
+        new anchor.BN(now + 1),
+        new anchor.BN(now + 40)
+      );
+
+      await warpTime(connection(), 5, ctx.owner);
+      const { keypair: voter, brainAta } = await createStaker(ctx, BigInt(5_000_000_000));
+      await castVote(ctx, voter, brainAta, result.proposalId, 0);
+
+      await warpTime(connection(), 50, ctx.owner);
+      await closeProposal(ctx, ctx.owner, result.proposalId);
+
+      const mint2 = Keypair.generate().publicKey;
+      const pool2 = Keypair.generate().publicKey;
+      const pos2 = Keypair.generate().publicKey;
+
+      try {
+        await governanceInitiateExit(
+          ctx, ctx.owner, result.proposalId,
+          mint2, pool2, pos2
+        );
+        expect.fail("Should have thrown");
+      } catch (err: any) {
+        expect(err.toString()).to.include("InvalidProposalType");
+      }
+    });
+
+    it("rejects rejected (not-passed) proposal", async () => {
+      // Create a sell proposal, vote No, close → Rejected
+      const now = await readClockTimestamp(connection());
+      const result = await createProposal(
+        ctx, ctx.owner, "Sell Rejected", "ipfs://sell-rejected", 1,
+        ["Sell", "Keep"],
+        new anchor.BN(now + 1),
+        new anchor.BN(now + 15)
+      );
+
+      await warpTime(connection(), 5, ctx.owner);
+      const { keypair: voter, brainAta } = await createStaker(ctx, BigInt(5_000_000_000));
+      await castVote(ctx, voter, brainAta, result.proposalId, 1); // Keep (No)
+
+      await warpTime(connection(), 20, ctx.owner);
+      await closeProposal(ctx, ctx.owner, result.proposalId);
+
+      const mint3 = Keypair.generate().publicKey;
+      const pool3 = Keypair.generate().publicKey;
+      const pos3 = Keypair.generate().publicKey;
+
+      try {
+        await governanceInitiateExit(
+          ctx, ctx.owner, result.proposalId,
+          mint3, pool3, pos3
+        );
+        expect.fail("Should have thrown");
+      } catch (err: any) {
+        expect(err.toString()).to.include("ProposalNotPassed");
+      }
+    });
+
+    it("proposal with tie cannot trigger governance exit", async () => {
+      const now = await readClockTimestamp(connection());
+      const result = await createProposal(
+        ctx, ctx.owner, "Sell Tie", "ipfs://sell-tie", 1,
+        ["Sell", "Keep"],
+        new anchor.BN(now + 1),
+        new anchor.BN(now + 30)
+      );
+
+      await warpTime(connection(), 5, ctx.owner);
+
+      const { keypair: v1, brainAta: a1 } = await createStaker(ctx, BigInt(500_000_000));
+      const { keypair: v2, brainAta: a2 } = await createStaker(ctx, BigInt(500_000_000));
+      await castVote(ctx, v1, a1, result.proposalId, 0);
+      await castVote(ctx, v2, a2, result.proposalId, 1);
+
+      await warpTime(connection(), 40, ctx.owner);
+      await closeProposal(ctx, ctx.owner, result.proposalId);
+
+      const proposal = await fetchProposal(ctx, result.proposalId);
+      expect(proposal.status).to.equal(2);
+      expect(proposal.winningOptionIndex).to.equal(255);
+
+      const tieMint = Keypair.generate().publicKey;
+      const tiePool = Keypair.generate().publicKey;
+      const tiePosition = Keypair.generate().publicKey;
+      try {
+        await governanceInitiateExit(
+          ctx,
+          ctx.owner,
+          result.proposalId,
+          tieMint,
+          tiePool,
+          tiePosition
+        );
+        expect.fail("Should have thrown");
+      } catch (err: any) {
+        expect(err.toString()).to.include("ProposalNotPassed");
+      }
+
+      const [tieExitPda] = findDlmmExit(tieMint, tiePool, ctx.program.programId);
+      const tieExitInfo = await connection().getAccountInfo(tieExitPda);
+      expect(tieExitInfo).to.equal(null);
+    });
+
+    it("proposal with no votes cannot trigger governance exit", async () => {
+      const now = await readClockTimestamp(connection());
+      const result = await createProposal(
+        ctx, ctx.owner, "Sell No Votes", "ipfs://sell-none", 1,
+        ["Sell", "Keep"],
+        new anchor.BN(now + 1),
+        new anchor.BN(now + 20)
+      );
+
+      await warpTime(connection(), 30, ctx.owner);
+      await closeProposal(ctx, ctx.owner, result.proposalId);
+
+      const proposal = await fetchProposal(ctx, result.proposalId);
+      expect(proposal.status).to.equal(2);
+      expect(proposal.winningOptionIndex).to.equal(255);
+
+      const noVotesMint = Keypair.generate().publicKey;
+      const noVotesPool = Keypair.generate().publicKey;
+      const noVotesPosition = Keypair.generate().publicKey;
+      try {
+        await governanceInitiateExit(
+          ctx,
+          ctx.owner,
+          result.proposalId,
+          noVotesMint,
+          noVotesPool,
+          noVotesPosition
+        );
+        expect.fail("Should have thrown");
+      } catch (err: any) {
+        expect(err.toString()).to.include("ProposalNotPassed");
+      }
+
+      const [noVotesExitPda] = findDlmmExit(noVotesMint, noVotesPool, ctx.program.programId);
+      const noVotesExitInfo = await connection().getAccountInfo(noVotesExitPda);
+      expect(noVotesExitInfo).to.equal(null);
+    });
+
+    it("crank rejected in manual mode (auto_execute = false)", async () => {
+      // Ensure auto_execute is false
+      const config = await fetchGovernanceConfig(ctx);
+      expect(config.autoExecute).to.equal(false);
+
+      // Create + pass another sell proposal
+      const now = await readClockTimestamp(connection());
+      const result = await createProposal(
+        ctx, ctx.owner, "Sell Crank Test", "ipfs://sell-crank", 1,
+        ["Sell", "Keep"],
+        new anchor.BN(now + 1),
+        new anchor.BN(now + 15)
+      );
+
+      await warpTime(connection(), 5, ctx.owner);
+      const { keypair: voter, brainAta } = await createStaker(ctx, BigInt(5_000_000_000));
+      await castVote(ctx, voter, brainAta, result.proposalId, 0);
+
+      await warpTime(connection(), 20, ctx.owner);
+      await closeProposal(ctx, ctx.owner, result.proposalId);
+
+      const beforeProposal = await fetchProposal(ctx, result.proposalId);
+      expect(beforeProposal.executed).to.equal(false);
+
+      const mint4 = Keypair.generate().publicKey;
+      const pool4 = Keypair.generate().publicKey;
+      const pos4 = Keypair.generate().publicKey;
+
+      try {
+        await governanceInitiateExit(
+          ctx, ctx.crank, result.proposalId,
+          mint4, pool4, pos4
+        );
+        expect.fail("Should have thrown");
+      } catch (err: any) {
+        expect(err.toString()).to.include("Unauthorized");
+      }
+
+      const afterProposal = await fetchProposal(ctx, result.proposalId);
+      expect(afterProposal.executed).to.equal(false);
+
+      const [blockedExitPda] = findDlmmExit(mint4, pool4, ctx.program.programId);
+      const blockedExitInfo = await connection().getAccountInfo(blockedExitPda);
+      expect(blockedExitInfo).to.equal(null);
+    });
+  });
+
+  // ────────────────────────────────────────────────────────────────
+  // realloc migration safety (M003/S01/T02)
+  // ────────────────────────────────────────────────────────────────
+  describe("realloc migration safety", () => {
+    async function fundedSigner(): Promise<Keypair> {
+      const signer = Keypair.generate();
+      const sig = await connection().requestAirdrop(
+        signer.publicKey,
+        2 * LAMPORTS_PER_SOL
+      );
+      await connection().confirmTransaction(sig, "confirmed");
+      return signer;
+    }
+
+    async function createClosedSellProposal(title: string): Promise<number> {
+      const now = await readClockTimestamp(connection());
+      const result = await createProposal(
+        ctx,
+        ctx.owner,
+        title,
+        `ipfs://${title.toLowerCase().replace(/\s+/g, "-")}`,
+        1,
+        ["Sell", "Keep"],
+        new anchor.BN(now + 1),
+        new anchor.BN(now + 40)
+      );
+
+      await warpTime(connection(), 5, ctx.owner);
+      const { keypair: voter, brainAta } = await createStaker(
+        ctx,
+        BigInt(5_000_000_000)
+      );
+      await castVote(ctx, voter, brainAta, result.proposalId, 0);
+
+      await warpTime(connection(), 50, ctx.owner);
+      await closeProposal(ctx, ctx.owner, result.proposalId);
+
+      const proposal = await fetchProposal(ctx, result.proposalId);
+      expect(proposal.status).to.equal(1);
+      expect(proposal.winningOptionIndex).to.equal(0);
+
+      return result.proposalId;
+    }
+
+    it("realloc_governance_config is idempotent and preserves existing fields", async () => {
+      await setAutoExecute(ctx, ctx.owner, true);
+      await setQuorum(ctx, ctx.owner, 3210);
+
+      const before = snapshotGovernanceConfig(await fetchGovernanceConfig(ctx));
+
+      await reallocGovernanceConfig(ctx, ctx.owner);
+      const afterFirst = snapshotGovernanceConfig(await fetchGovernanceConfig(ctx));
+      expect(afterFirst).to.deep.equal(before);
+
+      await reallocGovernanceConfig(ctx, ctx.owner);
+      const afterSecond = snapshotGovernanceConfig(await fetchGovernanceConfig(ctx));
+      expect(afterSecond).to.deep.equal(before);
+
+      await setAutoExecute(ctx, ctx.owner, false);
+      await setQuorum(ctx, ctx.owner, 0);
+    });
+
+    it("realloc_governance_config rejects non-owner and leaves state unchanged", async () => {
+      const rando = await fundedSigner();
+      const before = snapshotGovernanceConfig(await fetchGovernanceConfig(ctx));
+
+      try {
+        await reallocGovernanceConfig(ctx, rando);
+        expect.fail("Should have thrown");
+      } catch (err: any) {
+        expect(err.toString()).to.match(/Unauthorized|ConstraintHasOne|custom program error/i);
+      }
+
+      const after = snapshotGovernanceConfig(await fetchGovernanceConfig(ctx));
+      expect(after).to.deep.equal(before);
+    });
+
+    it("realloc_proposal is idempotent and malformed proposal_id is rejected with no drift", async () => {
+      const proposalId = await createClosedSellProposal("Realloc Proposal Safe");
+      const before = snapshotProposal(await fetchProposal(ctx, proposalId));
+
+      await reallocProposal(ctx, ctx.owner, proposalId);
+      const afterFirst = snapshotProposal(await fetchProposal(ctx, proposalId));
+      expect(afterFirst).to.deep.equal(before);
+
+      const [proposal] = findProposal(proposalId, ctx.stakingPool, ctx.program.programId);
+      try {
+        await ctx.program.methods
+          .reallocProposal(new anchor.BN(proposalId + 999))
+          .accountsStrict({
+            owner: ctx.owner.publicKey,
+            stakingPool: ctx.stakingPool,
+            proposal,
+            systemProgram: SystemProgram.programId,
+          })
+          .signers([ctx.owner])
+          .rpc();
+        expect.fail("Should have thrown");
+      } catch (err: any) {
+        expect(err.toString()).to.match(/ConstraintSeeds|seeds|custom program error/i);
+      }
+
+      const afterMalformed = snapshotProposal(await fetchProposal(ctx, proposalId));
+      expect(afterMalformed).to.deep.equal(before);
+
+      await reallocProposal(ctx, ctx.owner, proposalId);
+      const afterSecond = snapshotProposal(await fetchProposal(ctx, proposalId));
+      expect(afterSecond).to.deep.equal(before);
+    });
+
+    it("realloc_proposal rejects non-owner and leaves proposal unchanged", async () => {
+      const proposalId = await createClosedSellProposal("Realloc Proposal Unauthorized");
+      const rando = await fundedSigner();
+      const before = snapshotProposal(await fetchProposal(ctx, proposalId));
+
+      try {
+        await reallocProposal(ctx, rando, proposalId);
+        expect.fail("Should have thrown");
+      } catch (err: any) {
+        expect(err.toString()).to.match(/Unauthorized|ConstraintHasOne|custom program error/i);
+      }
+
+      const after = snapshotProposal(await fetchProposal(ctx, proposalId));
+      expect(after).to.deep.equal(before);
+    });
+
+    it("realloc_dlmm_exit is idempotent and preserves proposal-linked fields", async () => {
+      const proposalId = await createClosedSellProposal("Realloc Dlmm Exit Safe");
+      const assetMint = Keypair.generate().publicKey;
+      const dlmmPool = Keypair.generate().publicKey;
+      const position = Keypair.generate().publicKey;
+
+      await governanceInitiateExit(
+        ctx,
+        ctx.owner,
+        proposalId,
+        assetMint,
+        dlmmPool,
+        position
+      );
+
+      const before = snapshotDlmmExit(
+        await fetchDlmmExit(ctx, assetMint, dlmmPool)
+      );
+      expect(before.proposalId).to.equal(String(proposalId));
+
+      await reallocDlmmExit(ctx, ctx.owner, assetMint, dlmmPool);
+      const afterFirst = snapshotDlmmExit(
+        await fetchDlmmExit(ctx, assetMint, dlmmPool)
+      );
+      expect(afterFirst).to.deep.equal(before);
+
+      await reallocDlmmExit(ctx, ctx.owner, assetMint, dlmmPool);
+      const afterSecond = snapshotDlmmExit(
+        await fetchDlmmExit(ctx, assetMint, dlmmPool)
+      );
+      expect(afterSecond).to.deep.equal(before);
+    });
+
+    it("realloc_dlmm_exit rejects non-owner and leaves exit unchanged", async () => {
+      const proposalId = await createClosedSellProposal("Realloc Dlmm Exit Unauthorized");
+      const assetMint = Keypair.generate().publicKey;
+      const dlmmPool = Keypair.generate().publicKey;
+      const position = Keypair.generate().publicKey;
+
+      await governanceInitiateExit(
+        ctx,
+        ctx.owner,
+        proposalId,
+        assetMint,
+        dlmmPool,
+        position
+      );
+
+      const rando = await fundedSigner();
+      const before = snapshotDlmmExit(
+        await fetchDlmmExit(ctx, assetMint, dlmmPool)
+      );
+
+      try {
+        await reallocDlmmExit(ctx, rando, assetMint, dlmmPool);
+        expect.fail("Should have thrown");
+      } catch (err: any) {
+        expect(err.toString()).to.match(/Unauthorized|ConstraintHasOne|custom program error/i);
+      }
+
+      const after = snapshotDlmmExit(
+        await fetchDlmmExit(ctx, assetMint, dlmmPool)
+      );
+      expect(after).to.deep.equal(before);
+    });
+
+    it("realloc_staking_pool is idempotent and preserves non-default pool fields", async () => {
+      const { keypair: staker, brainAta } = await createStaker(
+        ctx,
+        BigInt(500_000_000_000)
+      );
+      await stakeTokens(ctx, staker, brainAta, new anchor.BN("100000000000"));
+
+      const before = snapshotStakingPool(await fetchPool(ctx));
+      expect(before.totalStaked).to.not.equal("0");
+
+      await reallocStakingPool(ctx, ctx.owner);
+      const afterFirst = snapshotStakingPool(await fetchPool(ctx));
+      expect(afterFirst).to.deep.equal(before);
+
+      await reallocStakingPool(ctx, ctx.owner);
+      const afterSecond = snapshotStakingPool(await fetchPool(ctx));
+      expect(afterSecond).to.deep.equal(before);
+    });
+
+    it("realloc_staking_pool rejects non-owner and leaves pool unchanged", async () => {
+      const rando = await fundedSigner();
+      const before = snapshotStakingPool(await fetchPool(ctx));
+
+      try {
+        await reallocStakingPool(ctx, rando);
+        expect.fail("Should have thrown");
+      } catch (err: any) {
+        expect(err.toString()).to.match(/Unauthorized|ConstraintHasOne|custom program error/i);
+      }
+
+      const after = snapshotStakingPool(await fetchPool(ctx));
+      expect(after).to.deep.equal(before);
+    });
+
+    it("close + execute governance flow still works after realloc migrations", async () => {
+      await reallocGovernanceConfig(ctx, ctx.owner);
+      await reallocStakingPool(ctx, ctx.owner);
+
+      const proposalId = await createClosedSellProposal("Post Realloc Governance Flow");
+      await reallocProposal(ctx, ctx.owner, proposalId);
+
+      const assetMint = Keypair.generate().publicKey;
+      const dlmmPool = Keypair.generate().publicKey;
+      const position = Keypair.generate().publicKey;
+
+      await governanceInitiateExit(
+        ctx,
+        ctx.owner,
+        proposalId,
+        assetMint,
+        dlmmPool,
+        position
+      );
+      await reallocDlmmExit(ctx, ctx.owner, assetMint, dlmmPool);
+
+      const proposal = await fetchProposal(ctx, proposalId);
+      const exit = await fetchDlmmExit(ctx, assetMint, dlmmPool);
+
+      expect(proposal.status).to.equal(1);
+      expect(proposal.executed).to.equal(true);
+      expect((exit.proposalId as anchor.BN).toNumber()).to.equal(proposalId);
+      expect(exit.status).to.equal(0);
+    });
+  });
+
+  // ────────────────────────────────────────────────────────────────
+  // set_auto_execute + auto-mode governance exit
+  // ────────────────────────────────────────────────────────────────
+  describe("set_auto_execute", () => {
+    it("owner can enable auto_execute", async () => {
+      await setAutoExecute(ctx, ctx.owner, true);
+
+      const config = await fetchGovernanceConfig(ctx);
+      expect(config.autoExecute).to.equal(true);
+    });
+
+    it("owner can disable auto_execute", async () => {
+      await setAutoExecute(ctx, ctx.owner, false);
+      let config = await fetchGovernanceConfig(ctx);
+      expect(config.autoExecute).to.equal(false);
+
+      // Re-enable for the next test
+      await setAutoExecute(ctx, ctx.owner, true);
+      config = await fetchGovernanceConfig(ctx);
+      expect(config.autoExecute).to.equal(true);
+    });
+
+    it("non-owner cannot set_auto_execute", async () => {
+      const rando = Keypair.generate();
+      const sig = await connection().requestAirdrop(
+        rando.publicKey,
+        2 * LAMPORTS_PER_SOL
+      );
+      await connection().confirmTransaction(sig, "confirmed");
+
+      try {
+        await setAutoExecute(ctx, rando, true);
+        expect.fail("Should have thrown");
+      } catch (err: any) {
+        expect(err.toString()).to.match(/Unauthorized|custom program error|ConstraintHasOne/i);
+      }
+    });
+
+    it("crank can call governance_initiate_exit when auto_execute = true", async () => {
+      // Ensure auto_execute is on
+      const config = await fetchGovernanceConfig(ctx);
+      expect(config.autoExecute).to.equal(true);
+
+      // Create + pass a sell proposal
+      const now = await readClockTimestamp(connection());
+      const result = await createProposal(
+        ctx, ctx.owner, "Auto Sell Test", "ipfs://auto-sell", 1,
+        ["Sell", "Keep"],
+        new anchor.BN(now + 1),
+        new anchor.BN(now + 15)
+      );
+
+      await warpTime(connection(), 5, ctx.owner);
+      const { keypair: voter, brainAta } = await createStaker(ctx, BigInt(5_000_000_000));
+      await castVote(ctx, voter, brainAta, result.proposalId, 0);
+
+      await warpTime(connection(), 20, ctx.owner);
+      await closeProposal(ctx, ctx.owner, result.proposalId);
+
+      const mintAuto = Keypair.generate().publicKey;
+      const poolAuto = Keypair.generate().publicKey;
+      const posAuto = Keypair.generate().publicKey;
+
+      // Crank executes the passed sell vote
+      await governanceInitiateExit(
+        ctx, ctx.crank, result.proposalId,
+        mintAuto, poolAuto, posAuto
+      );
+
+      const exit = await fetchDlmmExit(ctx, mintAuto, poolAuto);
+      expect(exit.owner.toBase58()).to.equal(ctx.owner.publicKey.toBase58());
+      expect((exit.proposalId as anchor.BN).toNumber()).to.equal(result.proposalId);
+      expect(exit.status).to.equal(0); // Active
     });
   });
 });

@@ -10,12 +10,16 @@ use crate::state::{DlmmExit, StakingPool};
 const STATUS_OFFSET: usize = 176;
 /// Byte offset of `completed_at` (i64) after status (u8) + created_at (i64).
 const COMPLETED_AT_OFFSET: usize = 185;
-/// Minimum account data length for a valid DlmmExit (194 bytes).
+/// Minimum account data length for a valid DlmmExit.
+/// Old layout (pre-M003): 194 bytes. New layout (post-M003, +proposal_id u64): 202 bytes.
+/// We use the old size as the minimum so emergency_halt can process both.
 const DLMM_EXIT_DATA_LEN: usize = 194;
 
 // Compile-time assertion: verify hardcoded byte offsets match DlmmExit field layout.
-// Layout: 8 (disc) + 32*5 (Pubkeys) + 8 (u64 total_sol_claimed) + 1 (u8 status)
-//       + 8 (i64 created_at) + 8 (i64 completed_at) + 1 (u8 bump) = 194
+// Old layout: 8 (disc) + 32*5 (Pubkeys) + 8 (u64 total_sol_claimed) + 1 (u8 status)
+//           + 8 (i64 created_at) + 8 (i64 completed_at) + 1 (u8 bump) = 194
+// New layout: ... + 8 (u64 proposal_id) + 1 (u8 bump) = 202
+// STATUS_OFFSET and COMPLETED_AT_OFFSET are unchanged — proposal_id is after completed_at.
 const _: () = {
     let disc = 8usize;
     let pubkeys = 32 * 5;
@@ -27,9 +31,12 @@ const _: () = {
     let expected_completed_at = expected_status + status_size + created_at_size; // 185
     assert!(expected_completed_at == 185);
     let completed_at_size = 8; // i64
+    let proposal_id_size = 8; // u64 (added in M003)
     let bump_size = 1; // u8
-    let expected_len = expected_completed_at + completed_at_size + bump_size; // 194
-    assert!(expected_len == 194);
+    let old_len = expected_completed_at + completed_at_size + bump_size; // 194 (pre-M003)
+    assert!(old_len == 194);
+    let new_len = expected_completed_at + completed_at_size + proposal_id_size + bump_size; // 202
+    assert!(new_len == 202);
 };
 
 #[derive(Accounts)]

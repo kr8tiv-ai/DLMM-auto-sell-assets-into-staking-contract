@@ -236,6 +236,18 @@ describe("security-attacks", () => {
       minStake: new anchor.BN(DEFAULT_MIN_STAKE.toString()),
       protocolFeeBps: 200,
     };
+
+    // Resume pool if a prior test suite (emergency-controls) left it paused
+    const poolState = await program.account.stakingPool.fetch(stakingPool);
+    if (poolState.isPaused) {
+      await (program.methods as any)
+        .resume()
+        .accountsStrict({
+          authority: owner.publicKey,
+          stakingPool,
+        })
+        .rpc();
+    }
   });
 
   // ================================================================

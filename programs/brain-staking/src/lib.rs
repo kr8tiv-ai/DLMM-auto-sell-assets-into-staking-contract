@@ -108,4 +108,59 @@ pub mod brain_staking {
     pub fn close_proposal(ctx: Context<CloseProposal>) -> Result<()> {
         instructions::close_proposal::handle_close_proposal(ctx)
     }
+
+    pub fn governance_initiate_exit(
+        ctx: Context<GovernanceInitiateExit>,
+        asset_mint: Pubkey,
+        dlmm_pool: Pubkey,
+        position: Pubkey,
+    ) -> Result<()> {
+        instructions::governance_initiate_exit::handle_governance_initiate_exit(
+            ctx, asset_mint, dlmm_pool, position,
+        )
+    }
+
+    pub fn set_auto_execute(ctx: Context<SetAutoExecute>, enabled: bool) -> Result<()> {
+        instructions::set_auto_execute::handle_set_auto_execute(ctx, enabled)
+    }
+
+    pub fn realloc_governance_config(ctx: Context<ReallocGovernanceConfig>) -> Result<()> {
+        instructions::realloc_governance_config::handle_realloc_governance_config(ctx)
+    }
+
+    pub fn realloc_dlmm_exit(ctx: Context<ReallocDlmmExit>) -> Result<()> {
+        instructions::realloc_dlmm_exit::handle_realloc_dlmm_exit(ctx)
+    }
+
+    pub fn realloc_proposal(ctx: Context<ReallocProposal>, proposal_id: u64) -> Result<()> {
+        instructions::realloc_proposal::handle_realloc_proposal(ctx, proposal_id)
+    }
+
+    pub fn realloc_staking_pool(ctx: Context<ReallocStakingPool>) -> Result<()> {
+        instructions::realloc_staking_pool::handle_realloc_staking_pool(ctx)
+    }
+
+    pub fn transfer_ownership(ctx: Context<TransferOwnership>, new_owner: Pubkey) -> Result<()> {
+        instructions::transfer_ownership::handle_transfer_ownership(ctx, new_owner)
+    }
+
+    pub fn accept_ownership(ctx: Context<AcceptOwnership>) -> Result<()> {
+        instructions::accept_ownership::handle_accept_ownership(ctx)
+    }
+
+    pub fn update_treasury(ctx: Context<UpdateTreasury>, new_treasury: Pubkey) -> Result<()> {
+        instructions::update_treasury::handle_update_treasury(ctx, new_treasury)
+    }
+
+    pub fn set_quorum(ctx: Context<SetQuorum>, min_quorum_bps: u16) -> Result<()> {
+        instructions::set_quorum::handle_set_quorum(ctx, min_quorum_bps)
+    }
+
+    pub fn update_pool_config(
+        ctx: Context<UpdatePoolConfig>,
+        new_min_stake: Option<u64>,
+        new_protocol_fee_bps: Option<u16>,
+    ) -> Result<()> {
+        instructions::update_pool_config::handle_update_pool_config(ctx, new_min_stake, new_protocol_fee_bps)
+    }
 }

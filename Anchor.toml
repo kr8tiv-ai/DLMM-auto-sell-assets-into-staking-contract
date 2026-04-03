@@ -8,7 +8,7 @@ skip-lint = false
 brain_staking = "5o2uBwvKUy4oF78ziR4tEiqz59k7XBXuZBwiZFqCfca2"
 
 [programs.mainnet]
-brain_staking = "BRAIN_STAKING_PROGRAM_ID_PLACEHOLDER"
+brain_staking = "5o2uBwvKUy4oF78ziR4tEiqz59k7XBXuZBwiZFqCfca2"
 
 [registry]
 url = "https://api.apr.dev"

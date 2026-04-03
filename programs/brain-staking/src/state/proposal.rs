@@ -31,6 +31,10 @@ pub struct Proposal {
     pub status: u8,
     /// Sum of all vote weights cast
     pub total_vote_weight: u128,
+    /// Index of the winning option (set during close_proposal tally; 255 = unresolved)
+    pub winning_option_index: u8,
+    /// Whether this proposal has been executed (governance_initiate_exit called)
+    pub executed: bool,
     /// PDA bump
     pub bump: u8,
 }

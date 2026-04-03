@@ -407,11 +407,12 @@ export function findGovernanceConfig(programId: PublicKey): [PublicKey, number] 
  */
 export function findProposal(
   proposalId: number,
+  poolKey: PublicKey,
   programId: PublicKey
 ): [PublicKey, number] {
   const buf = Buffer.alloc(8);
   buf.writeBigUInt64LE(BigInt(proposalId));
-  return PublicKey.findProgramAddressSync([PROPOSAL_SEED, buf], programId);
+  return PublicKey.findProgramAddressSync([PROPOSAL_SEED, poolKey.toBuffer(), buf], programId);
 }
 
 /**
@@ -469,7 +470,7 @@ export async function createProposal(
   // Read current next_proposal_id to derive the correct PDA
   const config = await ctx.program.account.governanceConfig.fetch(governanceConfig);
   const proposalId = (config.nextProposalId as anchor.BN).toNumber();
-  const [proposal] = findProposal(proposalId, ctx.program.programId);
+  const [proposal] = findProposal(proposalId, ctx.stakingPool, ctx.program.programId);
 
   const txSig = await ctx.program.methods
     .createProposal(title, descriptionUri, proposalType, options, votingStarts, votingEnds)
@@ -498,7 +499,7 @@ export async function castVote(
   stakerAccount?: PublicKey
 ): Promise<string> {
   const [governanceConfig] = findGovernanceConfig(ctx.program.programId);
-  const [proposal] = findProposal(proposalId, ctx.program.programId);
+  const [proposal] = findProposal(proposalId, ctx.stakingPool, ctx.program.programId);
   const [voteRecord] = findVoteRecord(proposalId, voter.publicKey, ctx.program.programId);
 
   // Build remaining accounts for optional staker_account
@@ -537,12 +538,15 @@ export async function closeProposal(
   signer: Keypair,
   proposalId: number
 ): Promise<string> {
-  const [proposal] = findProposal(proposalId, ctx.program.programId);
+  const [proposal] = findProposal(proposalId, ctx.stakingPool, ctx.program.programId);
+  const [governanceConfig] = findGovernanceConfig(ctx.program.programId);
 
   return ctx.program.methods
     .closeProposal()
     .accountsStrict({
       anyone: signer.publicKey,
+      stakingPool: ctx.stakingPool,
+      governanceConfig,
       proposal,
     })
     .signers([signer])
@@ -561,7 +565,7 @@ export async function fetchGovernanceConfig(ctx: TestContext) {
  * Fetch a Proposal account by id.
  */
 export async function fetchProposal(ctx: TestContext, proposalId: number) {
-  const [proposal] = findProposal(proposalId, ctx.program.programId);
+  const [proposal] = findProposal(proposalId, ctx.stakingPool, ctx.program.programId);
   return ctx.program.account.proposal.fetch(proposal);
 }
 
@@ -763,4 +767,232 @@ export async function updateCrank(
     })
     .signers([authority])
     .rpc();
+}
+
+// ──────────────────────────────────────────────────────────────────
+// Governance exit helpers
+// ──────────────────────────────────────────────────────────────────
+
+/**
+ * Call governance_initiate_exit — owner (manual) or crank (auto mode).
+ * Creates a DlmmExit linked to a passed sell proposal.
+ */
+export async function governanceInitiateExit(
+  ctx: TestContext,
+  authority: Keypair,
+  proposalId: number,
+  assetMint: PublicKey,
+  dlmmPool: PublicKey,
+  position: PublicKey
+): Promise<string> {
+  const [governanceConfig] = findGovernanceConfig(ctx.program.programId);
+  const [proposal] = findProposal(proposalId, ctx.stakingPool, ctx.program.programId);
+  const [dlmmExit] = findDlmmExit(assetMint, dlmmPool, ctx.program.programId);
+
+  return ctx.program.methods
+    .governanceInitiateExit(assetMint, dlmmPool, position)
+    .accountsStrict({
+      authority: authority.publicKey,
+      stakingPool: ctx.stakingPool,
+      governanceConfig,
+      proposal,
+      dlmmExit,
+      systemProgram: SystemProgram.programId,
+    })
+    .signers([authority])
+    .rpc();
+}
+
+/**
+ * Call set_auto_execute — owner only.
+ */
+export async function setAutoExecute(
+  ctx: TestContext,
+  authority: Keypair,
+  enabled: boolean
+): Promise<string> {
+  const [governanceConfig] = findGovernanceConfig(ctx.program.programId);
+
+  return ctx.program.methods
+    .setAutoExecute(enabled)
+    .accountsStrict({
+      owner: authority.publicKey,
+      stakingPool: ctx.stakingPool,
+      governanceConfig,
+    })
+    .signers([authority])
+    .rpc();
+}
+
+/**
+ * Call set_quorum — owner only.
+ */
+export async function setQuorum(
+  ctx: TestContext,
+  authority: Keypair,
+  minQuorumBps: number
+): Promise<string> {
+  const [governanceConfig] = findGovernanceConfig(ctx.program.programId);
+
+  return ctx.program.methods
+    .setQuorum(minQuorumBps)
+    .accountsStrict({
+      owner: authority.publicKey,
+      stakingPool: ctx.stakingPool,
+      governanceConfig,
+    })
+    .signers([authority])
+    .rpc();
+}
+
+/**
+ * Call realloc_governance_config — owner only, for migration.
+ */
+export async function reallocGovernanceConfig(
+  ctx: TestContext,
+  authority: Keypair
+): Promise<string> {
+  const [governanceConfig] = findGovernanceConfig(ctx.program.programId);
+
+  return ctx.program.methods
+    .reallocGovernanceConfig()
+    .accountsStrict({
+      owner: authority.publicKey,
+      stakingPool: ctx.stakingPool,
+      governanceConfig,
+      systemProgram: SystemProgram.programId,
+    })
+    .signers([authority])
+    .rpc();
+}
+
+/**
+ * Call realloc_proposal — owner only, for migration.
+ */
+export async function reallocProposal(
+  ctx: TestContext,
+  authority: Keypair,
+  proposalId: number
+): Promise<string> {
+  const [proposal] = findProposal(proposalId, ctx.stakingPool, ctx.program.programId);
+
+  return ctx.program.methods
+    .reallocProposal(new anchor.BN(proposalId))
+    .accountsStrict({
+      owner: authority.publicKey,
+      stakingPool: ctx.stakingPool,
+      proposal,
+      systemProgram: SystemProgram.programId,
+    })
+    .signers([authority])
+    .rpc();
+}
+
+/**
+ * Call realloc_dlmm_exit — owner only, for migration.
+ */
+export async function reallocDlmmExit(
+  ctx: TestContext,
+  authority: Keypair,
+  assetMint: PublicKey,
+  dlmmPool: PublicKey
+): Promise<string> {
+  const [dlmmExit] = findDlmmExit(assetMint, dlmmPool, ctx.program.programId);
+
+  return ctx.program.methods
+    .reallocDlmmExit()
+    .accountsStrict({
+      owner: authority.publicKey,
+      stakingPool: ctx.stakingPool,
+      dlmmExit,
+      systemProgram: SystemProgram.programId,
+    })
+    .signers([authority])
+    .rpc();
+}
+
+/**
+ * Call realloc_staking_pool — owner only, for migration.
+ */
+export async function reallocStakingPool(
+  ctx: TestContext,
+  authority: Keypair
+): Promise<string> {
+  return ctx.program.methods
+    .reallocStakingPool()
+    .accountsStrict({
+      owner: authority.publicKey,
+      stakingPool: ctx.stakingPool,
+      systemProgram: SystemProgram.programId,
+    })
+    .signers([authority])
+    .rpc();
+}
+
+export function snapshotGovernanceConfig(config: any) {
+  return {
+    pool: config.pool.toBase58(),
+    nextProposalId: (config.nextProposalId as anchor.BN).toString(),
+    autoExecute: config.autoExecute,
+    minQuorumBps: config.minQuorumBps,
+    bump: config.bump,
+  };
+}
+
+export function snapshotProposal(proposal: any) {
+  return {
+    id: (proposal.id as anchor.BN).toString(),
+    pool: proposal.pool.toBase58(),
+    proposer: proposal.proposer.toBase58(),
+    title: proposal.title,
+    descriptionUri: proposal.descriptionUri,
+    proposalType: proposal.proposalType,
+    options: [...proposal.options],
+    voteCounts: proposal.voteCounts.map((count: anchor.BN) => count.toString()),
+    votingStarts: (proposal.votingStarts as anchor.BN).toString(),
+    votingEnds: (proposal.votingEnds as anchor.BN).toString(),
+    status: proposal.status,
+    totalVoteWeight: (proposal.totalVoteWeight as anchor.BN).toString(),
+    winningOptionIndex: proposal.winningOptionIndex,
+    executed: proposal.executed,
+    bump: proposal.bump,
+  };
+}
+
+export function snapshotDlmmExit(dlmmExit: any) {
+  return {
+    pool: dlmmExit.pool.toBase58(),
+    owner: dlmmExit.owner.toBase58(),
+    assetMint: dlmmExit.assetMint.toBase58(),
+    dlmmPool: dlmmExit.dlmmPool.toBase58(),
+    position: dlmmExit.position.toBase58(),
+    totalSolClaimed: (dlmmExit.totalSolClaimed as anchor.BN).toString(),
+    status: dlmmExit.status,
+    createdAt: (dlmmExit.createdAt as anchor.BN).toString(),
+    completedAt: (dlmmExit.completedAt as anchor.BN).toString(),
+    proposalId: (dlmmExit.proposalId as anchor.BN).toString(),
+    bump: dlmmExit.bump,
+  };
+}
+
+export function snapshotStakingPool(pool: any) {
+  return {
+    owner: pool.owner.toBase58(),
+    crank: pool.crank.toBase58(),
+    brainMint: pool.brainMint.toBase58(),
+    brainVault: pool.brainVault.toBase58(),
+    rewardVault: pool.rewardVault.toBase58(),
+    treasury: pool.treasury.toBase58(),
+    totalStaked: (pool.totalStaked as anchor.BN).toString(),
+    totalWeightedStake: (pool.totalWeightedStake as anchor.BN).toString(),
+    rewardPerShare: (pool.rewardPerShare as anchor.BN).toString(),
+    totalRewardsDistributed: (pool.totalRewardsDistributed as anchor.BN).toString(),
+    protocolFeeBps: pool.protocolFeeBps,
+    minStakeAmount: (pool.minStakeAmount as anchor.BN).toString(),
+    pendingOwner: pool.pendingOwner.toBase58(),
+    isPaused: pool.isPaused,
+    bump: pool.bump,
+    brainVaultBump: pool.brainVaultBump,
+    rewardVaultBump: pool.rewardVaultBump,
+  };
 }

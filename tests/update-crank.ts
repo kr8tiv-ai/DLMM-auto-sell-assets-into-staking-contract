@@ -13,6 +13,8 @@ import {
   DEFAULT_MIN_STAKE,
   fetchPool,
   updateCrank,
+  createStaker,
+  stakeTokens,
 } from "./helpers";
 
 describe("update-crank", () => {
@@ -179,6 +181,10 @@ describe("update-crank", () => {
 
     const pool = await fetchPool(ctx);
     expect(pool.crank.toBase58()).to.equal(newCrank.publicKey.toBase58());
+
+    // H1: Need at least one staker for deposit_rewards to succeed
+    const staker = await createStaker(ctx, BigInt(DEFAULT_MIN_STAKE.toString()));
+    await stakeTokens(ctx, staker.keypair, staker.brainAta, new anchor.BN(DEFAULT_MIN_STAKE.toString()));
 
     // New crank should be able to call deposit_rewards
     // Build the instruction directly using the real pool treasury (not ctx.treasury
