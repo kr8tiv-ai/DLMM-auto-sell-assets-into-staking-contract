@@ -105,6 +105,7 @@ pub fn handle_governance_initiate_exit(
     exit.created_at = clock.unix_timestamp;
     exit.completed_at = 0;
     exit.proposal_id = proposal.id;
+    exit.last_claimed_amount = 0; // C-04: Initialize for idempotency
     exit.bump = ctx.bumps.dlmm_exit;
 
     // C7: Mark proposal as executed

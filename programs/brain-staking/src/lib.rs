@@ -156,6 +156,10 @@ pub mod brain_staking {
         instructions::update_treasury::handle_update_treasury(ctx, new_treasury)
     }
 
+    pub fn update_treasury_by_governance(ctx: Context<UpdateTreasuryByGovernance>, new_treasury: Pubkey) -> Result<()> {
+        instructions::update_treasury_by_governance::handle_update_treasury_by_governance(ctx, new_treasury)
+    }
+
     pub fn set_quorum(ctx: Context<SetQuorum>, min_quorum_bps: u16) -> Result<()> {
         instructions::set_quorum::handle_set_quorum(ctx, min_quorum_bps)
     }

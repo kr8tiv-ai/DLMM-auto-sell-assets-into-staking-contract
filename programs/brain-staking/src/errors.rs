@@ -108,4 +108,10 @@ pub enum StakingError {
 
     #[msg("Signer is not the pending owner")]
     InvalidPendingOwner,
+
+    #[msg("Invalid account state for operation")]
+    InvalidState,
+
+    #[msg("Treasury update requires governance approval")]
+    TreasuryRequiresGovernance,
 }

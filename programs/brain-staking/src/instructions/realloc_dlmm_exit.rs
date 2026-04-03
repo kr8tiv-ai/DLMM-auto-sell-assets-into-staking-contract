@@ -60,7 +60,10 @@ pub fn handle_realloc_dlmm_exit(ctx: Context<ReallocDlmmExit>) -> Result<()> {
     account_info.realloc(new_size, false)?;
 
     let exit = &mut ctx.accounts.dlmm_exit;
-    exit.proposal_id = 0;
+    // Initialize new fields for idempotency (C-04)
+    if exit.last_claimed_amount == 0 {
+        exit.last_claimed_amount = 0;
+    }
 
     msg!(
         "DlmmExit reallocated from {} to {} bytes",

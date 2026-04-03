@@ -61,11 +61,12 @@ pub fn handle_close_proposal(ctx: Context<CloseProposal>) -> Result<()> {
         return Ok(());
     }
 
-    // C5: Quorum check — total_vote_weight must meet min_quorum_bps of total_staked
+    // C5 & H-06: Quorum check — total_vote_weight must meet min_quorum_bps of quorum_snapshot
     let quorum_bps = ctx.accounts.governance_config.min_quorum_bps;
     if quorum_bps > 0 {
-        let total_staked = ctx.accounts.staking_pool.total_staked as u128;
-        let required = total_staked
+        // C-02: Use snapshot from proposal creation, not current state
+        let quorum_base = proposal.quorum_snapshot;
+        let required = quorum_base
             .checked_mul(quorum_bps as u128)
             .unwrap_or(0)
             .checked_div(10_000)

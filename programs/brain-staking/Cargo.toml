@@ -22,3 +22,9 @@ anchor-spl = "0.31.0"
 
 [dev-dependencies]
 proptest = "1"
+
+[profile.release]
+overflow-checks = true
+lto = true
+opt-level = "s"
+codegen-units = 1

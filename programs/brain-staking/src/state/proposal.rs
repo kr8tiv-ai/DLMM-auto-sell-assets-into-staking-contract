@@ -37,6 +37,8 @@ pub struct Proposal {
     pub executed: bool,
     /// Unix timestamp when proposal passed (0 = not passed yet)
     pub passed_at: i64,
+    /// C-02: Snapshot of total weighted stake at proposal creation (for quorum)
+    pub quorum_snapshot: u128,
     /// PDA bump
     pub bump: u8,
 }

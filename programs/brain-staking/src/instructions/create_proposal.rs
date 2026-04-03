@@ -77,10 +77,11 @@ pub fn handle_create_proposal(
     );
 
     let config = &mut ctx.accounts.governance_config;
+    let pool = &ctx.accounts.staking_pool;
     let proposal = &mut ctx.accounts.proposal;
 
     proposal.id = config.next_proposal_id;
-    proposal.pool = ctx.accounts.staking_pool.key();
+    proposal.pool = pool.key();
     proposal.proposer = ctx.accounts.owner.key();
     proposal.title = title;
     proposal.description_uri = description_uri;
@@ -94,6 +95,8 @@ pub fn handle_create_proposal(
     proposal.winning_option_index = 255; // Unresolved
     proposal.executed = false;
     proposal.passed_at = 0;
+    // C-02: Snapshot total weighted stake at proposal creation for quorum calculation
+    proposal.quorum_snapshot = pool.total_weighted_stake;
     proposal.bump = ctx.bumps.proposal;
 
     config.next_proposal_id = config

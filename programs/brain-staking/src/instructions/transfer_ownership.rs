@@ -18,7 +18,13 @@ pub struct TransferOwnership<'info> {
 }
 
 pub fn handle_transfer_ownership(ctx: Context<TransferOwnership>, new_owner: Pubkey) -> Result<()> {
+    // M-05: Validate new owner is not zero address
+    require!(new_owner != Pubkey::default(), StakingError::InvalidPendingOwner);
+    
     let pool = &mut ctx.accounts.staking_pool;
+    
+    // M-05: Clear any existing pending owner to prevent confusion
+    // This allows canceling a pending transfer by starting a new one
     pool.pending_owner = new_owner;
 
     msg!(

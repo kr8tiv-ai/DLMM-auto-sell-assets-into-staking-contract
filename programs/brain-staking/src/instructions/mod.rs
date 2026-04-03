@@ -26,6 +26,7 @@ pub mod unstake;
 pub mod update_crank;
 pub mod update_pool_config;
 pub mod update_treasury;
+pub mod update_treasury_by_governance;
 
 pub use accept_ownership::*;
 pub use cast_vote::*;
@@ -55,3 +56,4 @@ pub use unstake::*;
 pub use update_crank::*;
 pub use update_pool_config::*;
 pub use update_treasury::*;
+pub use update_treasury_by_governance::*;

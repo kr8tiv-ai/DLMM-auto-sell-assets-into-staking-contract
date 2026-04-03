@@ -60,6 +60,9 @@ pub const MAX_OPTION_LEN: usize = 32;
 /// Proposal type identifier for sell/DLMM-exit proposals
 pub const PROPOSAL_TYPE_SELL: u8 = 1;
 
+/// Proposal type identifier for treasury update proposals
+pub const PROPOSAL_TYPE_TREASURY_UPDATE: u8 = 2;
+
 /// Minimum voting period in seconds (24 hours)
 pub const MIN_VOTING_PERIOD_SECONDS: i64 = 24 * 60 * 60;
 

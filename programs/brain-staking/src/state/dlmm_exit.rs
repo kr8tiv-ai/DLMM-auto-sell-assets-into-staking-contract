@@ -23,6 +23,8 @@ pub struct DlmmExit {
     pub completed_at: i64,
     /// Governance proposal that triggered this exit (0 = owner-initiated)
     pub proposal_id: u64,
+    /// C-04: Last claimed amount for idempotency check
+    pub last_claimed_amount: u64,
     /// PDA bump
     pub bump: u8,
 }
