@@ -1,14 +1,6 @@
-import {
-  Connection,
-  Keypair,
-  PublicKey,
-  SystemProgram,
-  Transaction,
-  TransactionInstruction,
-  TransactionMessage,
-  VersionedTransaction,
-} from "@solana/web3.js";
+import { Connection, Keypair, PublicKey, SystemProgram, Transaction, TransactionInstruction, TransactionMessage, VersionedTransaction } from "@solana/web3.js";
 import { BundleResult } from "./types";
+import { jitoBundleSubmitted, jitoBundleSuccess } from "./metrics";
 
 /**
  * Known Jito tip accounts (mainnet).
@@ -273,10 +265,13 @@ export async function submitWithJitoFallback(
     try {
       const bundleId = await submitBundle(jitoUrl, bundle);
       results.push({ bundleId, landed: true });
+      jitoBundleSubmitted.inc();
+      jitoBundleSuccess.inc();
     } catch (err: any) {
       console.warn(
         `[jito-bundle] Jito submission failed: ${err?.message}. Falling back to regular tx.`
       );
+      jitoBundleSubmitted.inc();
       // Fallback: send operational txs individually (skip the tip tx which is last)
       for (let i = 0; i < bundle.length - 1; i++) {
         try {

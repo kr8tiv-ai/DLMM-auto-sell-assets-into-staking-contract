@@ -1,4 +1,5 @@
 import { Connection, Keypair, PublicKey, Transaction } from "@solana/web3.js";
+import * as http from "http";
 import { Program, AnchorProvider, Wallet, Idl, BN } from "@coral-xyz/anchor";
 import * as fs from "fs";
 import { loadConfig, loadKeypair } from "./config";
@@ -14,6 +15,7 @@ import { checkDust } from "./dust-detection";
 import { unwrapWsol } from "./wsol";
 import { submitWithJitoFallback } from "./jito-bundle";
 import { ExitStatus, DlmmExitAccount } from "./types";
+import { metricsEndpoint, contentType } from "./metrics";
 
 const log = createLogger("crank");
 
@@ -90,6 +92,22 @@ async function main(): Promise<void> {
     claimThreshold: config.claimThresholdLamports,
     jitoEngine: config.jitoBlockEngineUrl,
     jitoTip: config.jitoTipLamports,
+    jitoDynamicTip: config.jitoDynamicTip,
+    jitoMinTip: config.jitoMinTipLamports,
+  });
+
+  // Start metrics HTTP server
+  const metricsPort = parseInt(process.env.METRICS_PORT || "9090", 10);
+  const metricsServer = http.createServer((req, res) => {
+    if (req.url === "/metrics") {
+      res.writeHead(200, { "Content-Type": contentType() });
+      res.end(metricsEndpoint());
+    } else {
+      res.writeHead(404).end();
+    }
+  });
+  metricsServer.listen(metricsPort, () => {
+    log.info("Metrics server listening", { port: metricsPort });
   });
 
   // Load IDL and create Anchor program
@@ -105,6 +123,7 @@ async function main(): Promise<void> {
   // Register graceful shutdown handlers
   const shutdown = () => {
     log.info("Shutdown signal received, finishing current cycle");
+    metricsServer.close();
     requestShutdown();
   };
   process.on("SIGINT", shutdown);

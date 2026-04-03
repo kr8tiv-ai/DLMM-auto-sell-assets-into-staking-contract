@@ -9,6 +9,10 @@ export interface CrankConfig {
   claimThresholdLamports: number;
   jitoBlockEngineUrl: string;
   jitoTipLamports: number;
+  /** If true, fetch dynamic tip from Jito API instead of using static jitoTipLamports */
+  jitoDynamicTip: boolean;
+  /** Minimum tip to use when dynamic tip is enabled */
+  jitoMinTipLamports: number;
   /** Path to the Anchor IDL JSON */
   idlPath: string;
   /** Staking pool PDA base58 address */
@@ -45,6 +49,11 @@ export function loadConfig(): CrankConfig {
     ),
     jitoTipLamports: parseInt(
       optionalEnv("JITO_TIP_LAMPORTS", "10000"),
+      10
+    ),
+    jitoDynamicTip: optionalEnv("JITO_DYNAMIC_TIP", "false").toLowerCase() === "true",
+    jitoMinTipLamports: parseInt(
+      optionalEnv("JITO_MIN_TIP_LAMPORTS", "5000"),
       10
     ),
     idlPath: optionalEnv("IDL_PATH", "../target/idl/brain_staking.json"),

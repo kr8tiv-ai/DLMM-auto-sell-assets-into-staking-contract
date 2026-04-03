@@ -7,6 +7,14 @@ import { monitorPosition, claimFees, closePosition } from "./dlmm-lifecycle";
 import { checkDust } from "./dust-detection";
 import { unwrapWsol } from "./wsol";
 import { submitWithJitoFallback } from "./jito-bundle";
+import { getJitoTip } from "./jito-tip";
+import {
+  crankCycleDuration,
+  dlmmExitActiveGauge,
+  crankErrorsTotal,
+  crankLastHeartbeat,
+  rpcCallsTotal,
+} from "./metrics";
 
 const log = createLogger("monitor");
 
@@ -122,12 +130,19 @@ export async function processExit(
 
     const allTxs = [...claimTxs, depositTx, recordTx];
 
+    const tipLamports = await getJitoTip(
+      config.jitoBlockEngineUrl,
+      config.jitoTipLamports,
+      config.jitoDynamicTip,
+      config.jitoMinTipLamports
+    );
+
     const results = await deps.submitWithJitoFallback(
       connection,
       config.jitoBlockEngineUrl,
       allTxs,
       wallet,
-      config.jitoTipLamports
+      tipLamports
     );
 
     for (const r of results) {
@@ -166,12 +181,19 @@ export async function processExit(
     const completeTx = deps.buildCompleteExitTx(exitPda);
     const allTxs = [...closeTxs, completeTx];
 
+    const tipLamports = await getJitoTip(
+      config.jitoBlockEngineUrl,
+      config.jitoTipLamports,
+      config.jitoDynamicTip,
+      config.jitoMinTipLamports
+    );
+
     const results = await deps.submitWithJitoFallback(
       connection,
       config.jitoBlockEngineUrl,
       allTxs,
       wallet,
-      config.jitoTipLamports
+      tipLamports
     );
 
     for (const r of results) {
@@ -199,11 +221,15 @@ export async function startMonitor(
   resetShutdown();
 
   while (!isShutdownRequested()) {
+    const cycleStart = Date.now();
+
     try {
       const exits = await deps.fetchActiveExits();
       const activeExits = exits.filter(
         (e) => e.account.status === ExitStatus.Active
       );
+
+      dlmmExitActiveGauge.set(activeExits.length);
 
       if (activeExits.length === 0) {
         log.info("No active exits, sleeping");
@@ -228,15 +254,17 @@ export async function startMonitor(
             exitPda: publicKey.toBase58().slice(0, 8),
             error: err?.message,
           });
-          // Continue to next exit — never crash the loop
+          crankErrorsTotal.inc({ error_type: "process_exit" });
         }
       }
     } catch (err: any) {
       log.error("Error fetching exits", { error: err?.message });
-      // Continue polling — transient RPC errors shouldn't kill the crank
+      crankErrorsTotal.inc({ error_type: "fetch_exits" });
     }
 
-    // Write heartbeat after successful cycle
+    const cycleDuration = (Date.now() - cycleStart) / 1000;
+    crankCycleDuration.observe(cycleDuration);
+    crankLastHeartbeat.set(Date.now() / 1000);
     writeHeartbeat(config.heartbeatPath);
 
     if (!isShutdownRequested()) {
